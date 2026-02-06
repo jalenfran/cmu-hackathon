@@ -1,0 +1,78 @@
+policies:
+  # Ensure all S3 buckets storing financial data are encrypted
+  - name: encrypt-financial-data-buckets
+    resource: aws.s3
+    description: |
+      Automatically enable AES-256 encryption on any S3 bucket
+      tagged with 'data-classification: financial'. Required for
+      PCI-DSS and SOC2 compliance.
+    filters:
+      - type: value
+        key: "tag:data-classification"
+        value: financial
+      - type: bucket-encryption
+        state: false
+    actions:
+      - type: set-bucket-encryption
+        crypto: AES256
+      - type: notify
+        template: default
+        subject: "[Sentinel] S3 Bucket Auto-Encrypted"
+        to:
+          - security-team@sentinel-mosaic.io
+        transport:
+          type: sns
+          topic: arn:aws:sns:us-east-1:123456789:security-alerts
+
+  # Terminate EC2 instances missing required tags
+  - name: enforce-resource-tagging
+    resource: aws.ec2
+    description: |
+      Terminate any EC2 instance that has been running for more
+      than 1 hour without 'Environment' and 'Owner' tags. Prevents
+      orphaned resources and ensures cost accountability.
+    filters:
+      - type: value
+        key: State.Name
+        value: running
+      - type: instance-age
+        days: 0
+        hours: 1
+      - or:
+        - "tag:Environment": absent
+        - "tag:Owner": absent
+    actions:
+      - type: terminate
+      - type: notify
+        template: default
+        subject: "[Sentinel] Untagged EC2 Instance Terminated"
+
+  # Flag IAM roles with overly broad permissions
+  - name: audit-iam-broad-permissions
+    resource: aws.iam-role
+    description: |
+      Flag IAM roles that have wildcard (*) actions on sensitive
+      services. Critical for preventing privilege escalation in
+      the fraud detection pipeline.
+    filters:
+      - type: has-allow-all
+    actions:
+      - type: notify
+        template: default
+        subject: "[Sentinel] IAM Role with Overly Broad Permissions"
+        violation_desc: "Role has wildcard permissions on sensitive services"
+
+  # Ensure CloudTrail logging is enabled
+  - name: require-cloudtrail-logging
+    resource: aws.cloudtrail
+    description: |
+      Verify CloudTrail is enabled in all regions for complete
+      audit trail of API calls. Required for forensic investigation
+      of security incidents.
+    filters:
+      - type: value
+        key: IsLogging
+        value: false
+    actions:
+      - type: set-logging
+        enabled: true
