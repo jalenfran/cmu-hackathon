@@ -131,19 +131,22 @@ class AnomalyDetectionEngine:
         raw_score = self.model.decision_function(features)[0]
         prediction = self.model.predict(features)[0]
 
-        # Normalize score: lower decision_function = more anomalous
-        # Map to 0-1 range where 1 = most anomalous
-        normalized_score = max(0.0, min(1.0, 0.5 - raw_score))
+        # Normalize: decision_function returns negative for anomalies, positive for normal
+        # Typical range is roughly -0.5 to 0.5
+        # Map to 0-1 where 1 = most anomalous
+        normalized_score = max(0.0, min(1.0, -raw_score * 2))
 
-        # Boost score for obvious anomalies (rule-based)
+        # Rule-based boosting for obvious anomalies
         country = txn.get("country", "US")
         amount = txn.get("amount", 0)
         if country != "US" and amount > 1000:
-            normalized_score = max(normalized_score, 0.7)
+            normalized_score = max(normalized_score, 0.75)
         if amount > 5000:
-            normalized_score = max(normalized_score, 0.6)
+            normalized_score = max(normalized_score, 0.65)
+        if country != "US" and amount > 5000:
+            normalized_score = max(normalized_score, 0.85)
 
-        is_anomaly = prediction == -1 or normalized_score > 0.5
+        is_anomaly = normalized_score > 0.55
 
         risk_factors = []
         if is_anomaly:
@@ -153,7 +156,7 @@ class AnomalyDetectionEngine:
         self.tracker.update(txn.get("account_id", "unknown"), txn)
 
         return AnomalyResult(
-            is_anomaly=is_anomaly,
-            score=round(normalized_score, 3),
+            is_anomaly=bool(is_anomaly),
+            score=round(float(normalized_score), 3),
             risk_factors=risk_factors,
         )

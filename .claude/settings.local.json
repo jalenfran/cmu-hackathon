@@ -13,7 +13,9 @@
       "Bash(npm install:*)",
       "Bash(npx react-scripts build:*)",
       "Bash(docker:*)",
-      "Bash(open:*)"
+      "Bash(open:*)",
+      "Bash(python -c:*)",
+      "Bash(curl:*)"
     ]
   }
 }
