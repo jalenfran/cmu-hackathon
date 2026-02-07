@@ -41,7 +41,7 @@ class Settings(BaseSettings):
 
     # Demo mode
     demo_mode: bool = False
-    demo_txn_interval: float = 4.0
+    demo_txn_interval: float = 6.0
     demo_anomaly_interval: float = 30.0
 
     class Config:

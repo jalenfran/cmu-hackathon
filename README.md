@@ -153,6 +153,40 @@ Nessie API / Mock ──> Redpanda ──> Anomaly Engine (IsolationForest + FAI
 - START/STOP DEMO button for one-click demo mode
 - Fullscreen mode and infrastructure status monitoring
 
+## Remote Backend (ngrok)
+
+The frontend and backend can run on separate machines. The frontend connects to whatever backend URL is set in `frontend/.env`.
+
+**On the backend machine (Mac):**
+
+```bash
+# 1. Install ngrok (one-time)
+brew install ngrok
+
+# 2. Sign up at https://ngrok.com and add your auth token (one-time)
+ngrok config add-authtoken <your-token>
+
+# 3. Start the backend normally
+cd backend && source .venv/bin/activate && cd ..
+python -m uvicorn backend.api.server:app --host 0.0.0.0 --port 8000
+
+# 4. In another terminal, expose it via ngrok
+ngrok http 8000
+```
+
+ngrok will print a public URL like `https://abc123.ngrok-free.app`.
+
+**On the frontend machine:**
+
+Edit `frontend/.env` and set both URLs to the ngrok address:
+
+```env
+REACT_APP_API_URL=https://abc123.ngrok-free.app
+REACT_APP_WS_URL=wss://abc123.ngrok-free.app/ws/feed
+```
+
+Then restart the frontend (`npm start`). Note: use `wss://` (not `ws://`) since ngrok provides HTTPS.
+
 ## Demo Mode
 
 Click **START DEMO** in the dashboard header to automatically generate transactions, fraud scenarios, and disputes at a steady pace. Click **STOP DEMO** to pause.

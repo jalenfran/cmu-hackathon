@@ -714,17 +714,17 @@ async def _run_demo_sequence():
         # Curated rounds — each round is a themed burst of activity
         rounds = [
             # Round 1: International fraud blitz
-            {"frauds": [0, 1, 7], "dispute": True, "pace": (6, 10)},
+            {"frauds": [0, 1, 7], "dispute": True, "pace": (10, 16)},
             # Round 2: Financial crimes
-            {"frauds": [4, 8, 2], "dispute": False, "pace": (7, 12)},
+            {"frauds": [4, 8, 2], "dispute": False, "pace": (12, 18)},
             # Round 3: Luxury + dispute wave
-            {"frauds": [11, 5], "dispute": True, "pace": (5, 9)},
-            # Round 4: Rapid fire
-            {"frauds": [3, 10, 6, 12], "dispute": True, "pace": (5, 8)},
+            {"frauds": [11, 5], "dispute": True, "pace": (10, 15)},
+            # Round 4: Steady stream
+            {"frauds": [3, 10, 6, 12], "dispute": True, "pace": (10, 14)},
             # Round 5: High-value targets
-            {"frauds": [9, 13, 8], "dispute": False, "pace": (6, 10)},
-            # Round 6: Mixed chaos — everything at once
-            {"frauds": [0, 7, 4, 11], "dispute": True, "pace": (5, 8)},
+            {"frauds": [9, 13, 8], "dispute": False, "pace": (12, 16)},
+            # Round 6: Mixed chaos
+            {"frauds": [0, 7, 4, 11], "dispute": True, "pace": (10, 14)},
         ]
 
         round_idx = 0
@@ -744,7 +744,7 @@ async def _run_demo_sequence():
 
                 # Occasionally inject a dispute mid-round for variety
                 if random.random() < 0.3 and transaction_buffer:
-                    await asyncio.sleep(random.uniform(2, 4))
+                    await asyncio.sleep(random.uniform(4, 7))
                     candidates = [t for t in list(transaction_buffer)[:20] if not t.get("is_anomaly")]
                     if candidates:
                         txn = random.choice(candidates)
@@ -757,7 +757,7 @@ async def _run_demo_sequence():
 
             # End-of-round dispute injection if flagged
             if current_round["dispute"] and _demo_running and transaction_buffer:
-                await asyncio.sleep(random.uniform(2, 4))
+                await asyncio.sleep(random.uniform(4, 7))
                 candidates = [t for t in list(transaction_buffer)[:20] if not t.get("is_anomaly")]
                 if candidates:
                     txn = random.choice(candidates)
@@ -770,7 +770,7 @@ async def _run_demo_sequence():
 
             # Brief breather between rounds
             if _demo_running:
-                await asyncio.sleep(random.uniform(6, 10))
+                await asyncio.sleep(random.uniform(10, 16))
 
             round_idx += 1
 

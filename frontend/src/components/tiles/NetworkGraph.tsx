@@ -41,10 +41,10 @@ function AccountNode({ data }: { data: Record<string, unknown> }) {
       <Handle type="source" position={Position.Right} style={{ background: 'transparent', border: 'none' }} />
       <Handle type="target" position={Position.Left} style={{ background: 'transparent', border: 'none' }} />
       <div
-        className="flex items-center justify-center rounded-full text-[8px] font-mono font-bold border-2"
+        className="flex items-center justify-center rounded-full text-[10px] font-mono font-bold border-2"
         style={{
-          width: 44,
-          height: 44,
+          width: 58,
+          height: 58,
           backgroundColor: colors.bg,
           borderColor: colors.border,
           color: colors.text,
@@ -52,8 +52,8 @@ function AccountNode({ data }: { data: Record<string, unknown> }) {
       >
         {label}
       </div>
-      <div className="text-[7px] text-center leading-tight" style={{ color: colors.text }}>
-        <div className="font-bold uppercase" style={{ fontSize: 6 }}>{status?.replace('_', ' ')}</div>
+      <div className="text-[8px] text-center leading-tight" style={{ color: colors.text }}>
+        <div className="font-bold uppercase" style={{ fontSize: 7 }}>{status?.replace('_', ' ')}</div>
         <div>{alertCount} alert{alertCount !== 1 ? 's' : ''} · {formatCurrency(totalAmount)}</div>
       </div>
     </div>
@@ -136,10 +136,10 @@ export function NetworkGraph() {
     const accountNodes = graphData.nodes.filter(n => n.type === 'account');
     const merchantNodes = graphData.nodes.filter(n => n.type === 'merchant');
 
-    const ACCOUNT_SPACING = 90;
-    const MERCHANT_SPACING = 100;
+    const ACCOUNT_SPACING = 105;
+    const MERCHANT_SPACING = 110;
     const LEFT_X = 0;
-    const RIGHT_X = 280;
+    const RIGHT_X = 300;
 
     // Center both columns vertically
     const accountHeight = Math.max(0, (accountNodes.length - 1) * ACCOUNT_SPACING);
