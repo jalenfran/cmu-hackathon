@@ -1,0 +1,551 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Aegis Architecture Flow</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        /* ── Palette: Indigo primary, Slate neutrals ── */
+        :root {
+            --primary: #4f46e5;
+            --primary-light: #e0e7ff;
+            --primary-mid: #818cf8;
+            --accent: #0f172a;
+            --text: #1e293b;
+            --text-secondary: #475569;
+            --text-muted: #64748b;
+            --border: #e2e8f0;
+            --border-strong: #cbd5e1;
+            --bg: #f8fafc;
+            --card-bg: #ffffff;
+            --phase-bg: #f1f5f9;
+            --tag-bg: #e0e7ff;
+            --tag-border: #c7d2fe;
+            --pill-bg: #f1f5f9;
+            --pill-border: #e2e8f0;
+            --verdict-block-bg: #fef2f2;
+            --verdict-block-border: #fecaca;
+            --verdict-block-color: #dc2626;
+            --verdict-clear-bg: #f0fdf4;
+            --verdict-clear-border: #bbf7d0;
+            --verdict-clear-color: #16a34a;
+            --verdict-flag-bg: #fefce8;
+            --verdict-flag-border: #fde68a;
+            --verdict-flag-color: #ca8a04;
+            --arrow: #94a3b8;
+            --arrow-head: var(--primary);
+        }
+
+        body {
+            background: var(--bg);
+            color: var(--text);
+            font-family: 'Inter', -apple-system, sans-serif;
+            min-height: 100vh;
+        }
+
+        .page { padding: 36px 28px 40px; max-width: 1440px; margin: 0 auto; }
+
+        /* ── Header ── */
+        .header { text-align: center; margin-bottom: 36px; }
+        .header h1 {
+            font-size: 2.2rem; font-weight: 800; letter-spacing: -0.03em;
+            color: var(--accent);
+        }
+        .header p { color: var(--text-muted); font-size: 0.95rem; margin-top: 6px; letter-spacing: 0.04em; }
+
+        /* ── Phase containers ── */
+        .phase {
+            background: var(--phase-bg);
+            border: 1px solid var(--border);
+            border-radius: 18px;
+            padding: 14px 18px 18px;
+            position: relative;
+            flex-shrink: 0;
+        }
+        .phase-header {
+            display: flex; align-items: center; gap: 8px;
+            margin-bottom: 12px; padding-left: 2px;
+        }
+        .phase-num {
+            width: 24px; height: 24px; border-radius: 50%;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 0.65rem; font-weight: 800; flex-shrink: 0;
+            background: var(--primary); color: #fff; border: none;
+        }
+        .phase-title { font-size: 0.72rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em; color: var(--text); }
+        .phase-inner { display: flex; align-items: stretch; gap: 6px; }
+
+        /* ── Row layout ── */
+        .row { display: flex; align-items: stretch; gap: 0; }
+        .row.reverse { flex-direction: row-reverse; margin-right: 60px; }
+
+        /* ── Horizontal phase-to-phase arrows ── */
+        .h-arrow { display: flex; align-items: center; padding: 0 3px; flex-shrink: 0; }
+        .h-arrow svg { width: 36px; height: 18px; overflow: visible; }
+
+        /* ── Vertical phase-to-phase connectors ── */
+        .v-conn { display: flex; padding: 2px 0; }
+        .v-conn.right { justify-content: flex-end; padding-right: 70px; }
+        .v-conn.left { justify-content: flex-start; padding-left: 70px; }
+        .v-conn svg { width: 24px; height: 36px; }
+
+        /* ── Internal arrows ── */
+        .i-arrow { display: flex; align-items: center; padding: 0 3px; flex-shrink: 0; }
+        .i-arrow svg { width: 24px; height: 14px; overflow: visible; }
+
+        /* ── SVG arrow styles ── */
+        .a-line { stroke: var(--border-strong); stroke-width: 2; stroke-dasharray: 6 4; }
+        .a-head { fill: var(--arrow-head); }
+        .a-dot { fill: var(--primary-mid); animation: dotPulse 2.5s ease-in-out infinite; }
+        .a-line-bright { stroke: var(--arrow); stroke-width: 2; stroke-dasharray: 6 4; }
+
+        @keyframes dotPulse {
+            0%, 100% { opacity: 0.3; transform: translateX(0); }
+            50% { opacity: 1; transform: translateX(4px); }
+        }
+        @keyframes dotPulseV {
+            0%, 100% { opacity: 0.3; }
+            50% { opacity: 1; }
+        }
+        .a-dot-v { fill: var(--primary-mid); animation: dotPulseV 2s ease-in-out infinite; }
+
+        /* ── Cards ── */
+        .card {
+            background: var(--card-bg);
+            border: 1px solid var(--border);
+            border-radius: 14px;
+            padding: 16px 16px;
+            text-align: center;
+            transition: all 0.3s ease;
+            flex-shrink: 0;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        .card:hover {
+            border-color: var(--primary-mid);
+            box-shadow: 0 4px 12px rgba(79,70,229,0.08);
+            transform: translateY(-2px);
+        }
+
+        .card-icon {
+            width: 48px; height: 48px;
+            min-width: 48px; min-height: 48px;
+            margin: 0 auto 10px;
+            display: flex; align-items: center; justify-content: center;
+            border-radius: 12px; overflow: hidden;
+        }
+        .card-icon.sm { width: 36px; height: 36px; min-width: 36px; min-height: 36px; border-radius: 10px; }
+        .card-icon.has-bg { background: #fff; padding: 6px; border: 1px solid var(--border); }
+        .card-icon.dark-bg { background: var(--primary-light); border: 1px solid var(--tag-border); }
+        .card-icon img { max-width: 100%; max-height: 100%; object-fit: contain; }
+
+        .card h3 { font-size: 0.88rem; font-weight: 700; margin-bottom: 3px; color: var(--accent); }
+        .card p { font-size: 0.68rem; color: var(--text-secondary); line-height: 1.4; }
+        .card .detail { font-size: 0.58rem; color: var(--text-muted); line-height: 1.4; margin-top: 4px; }
+
+        /* ── All text colors → consistent palette ── */
+        .text-cyan, .text-red, .text-pink, .text-indigo,
+        .text-purple, .text-green, .text-yellow, .text-slate,
+        .text-orange, .text-blue { color: var(--primary); }
+
+        /* ── All border accent colors → same ── */
+        .b-cyan, .b-red, .b-pink, .b-indigo,
+        .b-purple, .b-green, .b-orange, .b-blue {
+            border-color: var(--tag-border) !important;
+        }
+
+        /* ── Tags — unified ── */
+        .tag {
+            display: inline-block; font-size: 0.52rem; font-weight: 700;
+            padding: 2px 7px; border-radius: 4px; margin-top: 6px; letter-spacing: 0.04em;
+            background: var(--tag-bg); color: var(--primary); border: 1px solid var(--tag-border);
+        }
+        .t-cyan, .t-red, .t-indigo, .t-purple, .t-green, .t-orange, .t-pink {
+            background: var(--tag-bg); color: var(--primary); border: 1px solid var(--tag-border);
+        }
+
+        /* ── Verdicts — keep semantic colors for block/clear/flag ── */
+        .verdicts { display: flex; gap: 4px; margin-top: 8px; justify-content: center; }
+        .verdict { font-size: 0.54rem; font-weight: 800; padding: 3px 8px; border-radius: 5px; letter-spacing: 0.04em; }
+        .verdict.block { background: var(--verdict-block-bg); color: var(--verdict-block-color); border: 1px solid var(--verdict-block-border); }
+        .verdict.clear { background: var(--verdict-clear-bg); color: var(--verdict-clear-color); border: 1px solid var(--verdict-clear-border); }
+        .verdict.flag  { background: var(--verdict-flag-bg); color: var(--verdict-flag-color); border: 1px solid var(--verdict-flag-border); }
+
+        /* ── Sub-rows ── */
+        .sub-row { display: flex; gap: 5px; margin-top: 8px; }
+        .sub-card {
+            background: var(--phase-bg); border: 1px solid var(--border);
+            border-radius: 8px; padding: 6px 8px; text-align: center; flex: 1;
+        }
+        .sub-card img { height: 18px; margin: 0 auto 3px; display: block; }
+        .sub-card .nm { font-size: 0.56rem; font-weight: 700; color: var(--text); }
+        .sub-card .ds { font-size: 0.48rem; color: var(--text-muted); }
+
+        /* ── Tool pills / tile pills — unified ── */
+        .tool-row { display: flex; flex-wrap: wrap; gap: 3px; margin-top: 6px; justify-content: center; }
+        .tool-pill {
+            font-size: 0.48rem; font-weight: 600; padding: 2px 5px; border-radius: 3px;
+            background: var(--pill-bg); color: var(--text-secondary); border: 1px solid var(--pill-border);
+        }
+        .tile-pill {
+            font-size: 0.5rem; font-weight: 600; padding: 2px 6px; border-radius: 4px;
+            background: var(--pill-bg); color: var(--text-secondary); border: 1px solid var(--pill-border);
+        }
+
+        .features { font-size: 0.56rem; color: var(--text-muted); text-align: left; margin-top: 5px; line-height: 1.5; }
+        .features span { color: var(--primary); font-weight: 600; }
+
+        .icon-pair { display: flex; gap: 6px; justify-content: center; margin-bottom: 10px; }
+
+        .footer {
+            text-align: center; margin-top: 36px;
+            font-size: 0.6rem; color: var(--border-strong);
+            letter-spacing: 0.2em; text-transform: uppercase;
+        }
+    </style>
+</head>
+<body>
+<div class="page">
+
+    <div class="header">
+        <h1>Aegis Architecture</h1>
+        <p>Autonomous Fraud Detection &middot; Human-in-the-Loop &middot; Adaptive Learning</p>
+    </div>
+
+    <!-- ═══════════════════════════════════════════════════════
+         ROW 1 (L→R):  [Data Sources] → [Streaming] → [Detection] → [Data Layer]
+    ═══════════════════════════════════════════════════════ -->
+    <div class="row">
+
+        <!-- PHASE 1 -->
+        <div class="phase">
+            <div class="phase-header">
+                <div class="phase-num">1</div>
+                <div class="phase-title">Data Sources</div>
+            </div>
+            <div class="phase-inner">
+                <div class="card b-cyan" style="width:155px;">
+                    <div class="card-icon has-bg">
+                        <img src="http://api.nessieisreal.com/img/nessie-logo.png" alt="Nessie">
+                    </div>
+                    <h3 class="text-cyan">Nessie API</h3>
+                    <p>Capital One Sandbox</p>
+                    <div class="detail">Accounts &middot; Merchants &middot; Purchases</div>
+                    <div class="tag t-cyan">OPTIONAL</div>
+                </div>
+                <div class="i-arrow"><svg viewBox="0 0 24 14"><line class="a-line" x1="0" y1="7" x2="16" y2="7"/><polygon class="a-head" points="14,3 22,7 14,11"/></svg></div>
+                <div class="card" style="width:145px;">
+                    <div class="card-icon dark-bg">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="#64748b" stroke-width="1.5" width="28"><rect x="4" y="4" width="16" height="16" rx="2"/><path d="M9 9h6M9 12h6M9 15h4"/></svg>
+                    </div>
+                    <h3 class="text-slate">Mock Generator</h3>
+                    <p>14 Fraud Scenarios</p>
+                    <div class="detail">Synthetic &middot; 8% anomaly rate</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="h-arrow"><svg viewBox="0 0 36 18"><line class="a-line-bright" x1="0" y1="9" x2="26" y2="9"/><polygon class="a-head" points="24,4 32,9 24,14"/><circle class="a-dot" cx="5" cy="9" r="2"/></svg></div>
+
+        <!-- PHASE 2 -->
+        <div class="phase">
+            <div class="phase-header">
+                <div class="phase-num">2</div>
+                <div class="phase-title">Streaming</div>
+            </div>
+            <div class="phase-inner">
+                <div class="card b-red" style="width:170px;">
+                    <div class="card-icon has-bg">
+                        <img src="https://images.ctfassets.net/paqvtpyf8rwu/3N0YR77hMkUMGiioMg2mKW/e5a8105e25b4e4d3c3c4cf88dc498b58/redpanda-logo.png" alt="Redpanda"
+                             onerror="this.parentElement.innerHTML='<div style=font-size:1.5rem>🐼</div>'">
+                    </div>
+                    <h3 class="text-red">Redpanda</h3>
+                    <p>Kafka-compatible Broker</p>
+                    <div class="detail"><code style="color:var(--primary);font-weight:600;">transactions</code> topic<br>aiokafka &middot; Zero JVM</div>
+                    <div class="tag t-red">KAFKA PROTOCOL</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="h-arrow"><svg viewBox="0 0 36 18"><line class="a-line-bright" x1="0" y1="9" x2="26" y2="9"/><polygon class="a-head" points="24,4 32,9 24,14"/><circle class="a-dot" cx="5" cy="9" r="2" style="animation-delay:0.4s"/></svg></div>
+
+        <!-- PHASE 3 -->
+        <div class="phase">
+            <div class="phase-header">
+                <div class="phase-num">3</div>
+                <div class="phase-title">Detection</div>
+            </div>
+            <div class="phase-inner">
+                <div class="card b-indigo" style="width:200px;">
+                    <div class="card-icon dark-bg">
+                        <img src="https://upload.wikimedia.org/wikipedia/commons/thumb/0/05/Scikit_learn_logo_small.svg/260px-Scikit_learn_logo_small.svg.png" alt="sklearn"
+                             onerror="this.parentElement.innerHTML='<div style=color:#fb923c;font-weight:800;font-size:1rem>SK</div>'">
+                    </div>
+                    <h3 class="text-indigo">Isolation Forest</h3>
+                    <p>100 Trees &middot; 0.08 Contamination</p>
+                    <div class="features">
+                        <span>8 features:</span> amount, hour, velocity,<br>
+                        international, dist, z-score…
+                    </div>
+                    <div class="tag t-indigo">ML PIPELINE</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="h-arrow"><svg viewBox="0 0 36 18"><line class="a-line-bright" x1="0" y1="9" x2="26" y2="9"/><polygon class="a-head" points="24,4 32,9 24,14"/><circle class="a-dot" cx="5" cy="9" r="2" style="animation-delay:0.8s"/></svg></div>
+
+        <!-- PHASE 4 -->
+        <div class="phase">
+            <div class="phase-header">
+                <div class="phase-num">4</div>
+                <div class="phase-title">Data Layer</div>
+            </div>
+            <div class="phase-inner">
+                <div class="card b-purple" style="width:115px;">
+                    <div class="card-icon has-bg">
+                        <img src="https://upload.wikimedia.org/wikipedia/commons/thumb/7/7b/Meta_Platforms_Inc._logo.svg/800px-Meta_Platforms_Inc._logo.svg.png" alt="Meta">
+                    </div>
+                    <h3 class="text-purple">FAISS</h3>
+                    <p>Vector Search</p>
+                    <div class="detail">Sentence<br>Transformers</div>
+                </div>
+                <div class="card" style="width:105px;">
+                    <div class="card-icon has-bg">
+                        <img src="https://cdn.worldvectorlogo.com/logos/redis.svg" alt="Redis" onerror="this.parentElement.innerHTML='<div style=color:#ef4444;font-weight:800;font-size:1.1rem>R</div>'">
+                    </div>
+                    <h3 class="text-red">Redis</h3>
+                    <p>Cache</p>
+                    <div class="detail">Velocity &middot; Stats</div>
+                </div>
+                <div class="card b-blue" style="width:105px;">
+                    <div class="card-icon has-bg">
+                        <img src="https://dist.neo4j.com/wp-content/uploads/20210423062553/neo4j-social-share-21.png" alt="Neo4j" onerror="this.parentElement.innerHTML='<div style=color:#3b82f6;font-weight:800;font-size:1.1rem>N4j</div>'">
+                    </div>
+                    <h3 class="text-blue">Neo4j</h3>
+                    <p>Graph</p>
+                    <div class="detail">Fraud Rings</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ═══ STRAIGHT DOWN CONNECTOR: Row 1 → Row 2 (right side, Phase 4 → Phase 5) ═══ -->
+    <div style="display:flex;justify-content:flex-end;padding:4px 0;">
+        <svg viewBox="0 0 24 36" width="24" height="36" style="overflow:visible;margin-right:200px;">
+            <line class="a-line-bright" x1="12" y1="0" x2="12" y2="28"/>
+            <polygon class="a-head" points="7,26 12,34 17,26"/>
+            <circle class="a-dot-v" cx="12" cy="8" r="2.5"/>
+        </svg>
+    </div>
+
+    <!-- ═══════════════════════════════════════════════════════
+         ROW 2 (R→L):  [AI Agents + KYC] ← [Orchestration + Adaptive Shield]
+    ═══════════════════════════════════════════════════════ -->
+    <div class="row reverse">
+
+        <!-- PHASE 5: AI Agents -->
+        <div class="phase">
+            <div class="phase-header">
+                <div class="phase-num">5</div>
+                <div class="phase-title">AI Investigation</div>
+            </div>
+            <div class="phase-inner">
+                <div class="card b-pink" style="width:210px;">
+                    <div class="icon-pair">
+                        <div class="card-icon sm has-bg">
+                            <img src="https://ollama.com/public/ollama.png" alt="Ollama" onerror="this.parentElement.innerHTML='<div style=font-size:1.1rem>🦙</div>'">
+                        </div>
+                        <div class="card-icon sm has-bg">
+                            <img src="https://assets.streamlinehq.com/image/private/w_300,h_300,ar_1/f_auto/v1/icons/logos/langchain-ipuhh4qo1jz5ssl4x0g2a.png/langchain-dp1uxj2zn3752pntqnpfu2.png?_a=DATAiZAAZAA0" alt="LangChain"
+                                 onerror="this.parentElement.innerHTML='<div style=font-size:0.6rem;font-weight:800;color:#1c3c3c>LC</div>'">
+                        </div>
+                    </div>
+                    <h3 class="text-pink">Fraud Agent</h3>
+                    <p>Llama 3 &middot; LangChain &middot; ReAct</p>
+                    <div class="detail">Uses tools to verify fraud with the LLM</div>
+                    <div class="verdicts">
+                        <span class="verdict block">BLOCK</span>
+                        <span class="verdict clear">CLEAR</span>
+                        <span class="verdict flag">FLAG</span>
+                    </div>
+                </div>
+                <div class="card b-orange" style="width:150px;">
+                    <div class="card-icon dark-bg">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="#4f46e5" stroke-width="1.5" width="28"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>
+                    </div>
+                    <h3 class="text-orange">Dispute Agent</h3>
+                    <p>Customer Claims</p>
+                    <div class="detail">Evidence vs txn data</div>
+                    <div class="verdicts" style="margin-top:6px;">
+                        <span class="verdict clear" style="font-size:0.48rem;">APPROVED</span>
+                        <span class="verdict block" style="font-size:0.48rem;">DENIED</span>
+                    </div>
+                </div>
+                <div class="card b-green" style="width:130px;">
+                    <div class="card-icon dark-bg">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="#4f46e5" stroke-width="1.5" width="28"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+                    </div>
+                    <h3 class="text-green">KYC Engine</h3>
+                    <p>Identity Risk</p>
+                    <div class="detail">Velocity &middot; Location<br>Diversity &middot; Dispersion</div>
+                    <div class="tag t-green">SCORE 0-100</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="h-arrow"><svg viewBox="0 0 36 18" style="transform:scaleX(-1)"><line class="a-line-bright" x1="0" y1="9" x2="26" y2="9"/><polygon class="a-head" points="24,4 32,9 24,14"/><circle class="a-dot" cx="5" cy="9" r="2" style="animation-delay:1.2s"/></svg></div>
+
+        <!-- PHASE 6: Orchestration + Adaptive Shield (combined) -->
+        <div class="phase">
+            <div class="phase-header">
+                <div class="phase-num">6</div>
+                <div class="phase-title">Orchestration &amp; Learning</div>
+            </div>
+            <div class="phase-inner">
+                <div class="card b-green" style="width:170px;">
+                    <div class="card-icon has-bg">
+                        <img src="https://cdn.worldvectorlogo.com/logos/fastapi.svg" alt="FastAPI" onerror="this.parentElement.innerHTML='<div style=font-weight:800;color:#05998b;font-size:0.7rem>⚡</div>'">
+                    </div>
+                    <h3 class="text-green">FastAPI</h3>
+                    <p>Async Backend</p>
+                    <div class="detail">REST + WebSocket<br>Pydantic &middot; Workers</div>
+                </div>
+                <div class="card b-purple" style="width:185px;">
+                    <div class="card-icon has-bg">
+                        <img src="https://upload.wikimedia.org/wikipedia/commons/thumb/7/7b/Meta_Platforms_Inc._logo.svg/800px-Meta_Platforms_Inc._logo.svg.png" alt="Meta">
+                    </div>
+                    <h3 class="text-purple">Adaptive Shield</h3>
+                    <p>FAISS Feedback Loop</p>
+                    <div class="detail">Embeds verdicts &rarr; similar case lookup<br><span style="color:var(--primary);">Human decisions weighted higher</span></div>
+                    <div class="tag t-purple">LEARNING LOOP</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ═══ L-CONNECTOR: Row 2 → Row 3 (left side, exits Phase 6 left edge, drops into Phase 7) ═══ -->
+    <div style="display:flex;justify-content:flex-start;padding:4px 0;">
+        <svg viewBox="0 0 160 50" width="160" height="50" style="overflow:visible;margin-left:50px;">
+            <path d="M 320,-150 L 14,-150 L 14,42" fill="none" stroke="#94a3b8" stroke-width="2" stroke-dasharray="6 4"/>
+            <polygon class="a-head" points="9,40 14,48 19,40"/>
+            <circle class="a-dot-v" cx="80" cy="-150" r="2.5" style="animation-delay:1s"/>
+        </svg>
+    </div>
+
+    <!-- ═══════════════════════════════════════════════════════
+         ROW 3 (L→R):  [Human Review + Notifications] → [Dashboard] → [Infrastructure]
+    ═══════════════════════════════════════════════════════ -->
+    <div class="row">
+
+        <!-- PHASE 7: Human Layer -->
+        <div class="phase">
+            <div class="phase-header">
+                <div class="phase-num">7</div>
+                <div class="phase-title">Human Layer</div>
+            </div>
+            <div class="phase-inner">
+                <div class="card b-purple" style="width:175px;">
+                    <div class="card-icon dark-bg">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="#4f46e5" stroke-width="1.5" width="28"><circle cx="9" cy="7" r="4"/><path d="M3 21v-2a4 4 0 014-4h4a4 4 0 014 4v2"/><path d="M16 3.13a4 4 0 010 7.75"/><path d="M21 21v-2a4 4 0 00-3-3.87"/></svg>
+                    </div>
+                    <h3 class="text-purple">HITL Panel</h3>
+                    <p>Analyst Review</p>
+                    <div class="detail">Block / Clear &rarr; FAISS<br><span style="color:var(--primary);">Confidence badges</span></div>
+                    <div class="tag t-purple">HITL</div>
+                </div>
+                <div class="card b-orange" style="width:165px;">
+                    <div class="card-icon has-bg">
+                        <img src="https://cdn.worldvectorlogo.com/logos/slack-new-logo.svg" alt="Slack" onerror="this.parentElement.innerHTML='<div style=font-size:1.5rem>💬</div>'">
+                    </div>
+                    <h3 class="text-orange">Slack Webhooks</h3>
+                    <p>Real-time Alerts</p>
+                    <div class="detail">
+                        <span style="color:var(--primary);font-weight:600;">#fraud-alerts</span><br>fast
+                        <span style="color:var(--primary);font-weight:600;">#human-reviews</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="h-arrow"><svg viewBox="0 0 36 18"><line class="a-line-bright" x1="0" y1="9" x2="26" y2="9"/><polygon class="a-head" points="24,4 32,9 24,14"/><circle class="a-dot" cx="5" cy="9" r="2" style="animation-delay:2s"/></svg></div>
+
+        <!-- PHASE 8: Dashboard -->
+        <div class="phase">
+            <div class="phase-header">
+                <div class="phase-num">8</div>
+                <div class="phase-title">Command Center</div>
+            </div>
+            <div class="phase-inner">
+                <div class="card b-cyan" style="width:225px;">
+                    <div class="icon-pair">
+                        <div class="card-icon sm has-bg">
+                            <img src="https://upload.wikimedia.org/wikipedia/commons/thumb/a/a7/React-icon.svg/1280px-React-icon.svg.png" alt="React">
+                        </div>
+                        <div class="card-icon sm has-bg">
+                            <img src="https://cdn.worldvectorlogo.com/logos/typescript.svg" alt="TS" onerror="this.parentElement.innerHTML='<div style=font-weight:800;color:#3178c6;font-size:0.7rem>TS</div>'">
+                        </div>
+                        <div class="card-icon sm has-bg">
+                            <img src="https://cdn.worldvectorlogo.com/logos/tailwindcss.svg" alt="TW" onerror="this.parentElement.innerHTML='<div style=font-weight:800;color:#06b6d4;font-size:0.6rem>TW</div>'">
+                        </div>
+                    </div>
+                    <h3 class="text-cyan">React Dashboard</h3>
+                    <p>React 19 &middot; TS &middot; Tailwind &middot; Recharts</p>
+                    <div style="display:flex;flex-wrap:wrap;gap:3px;margin-top:7px;justify-content:center;">
+                        <span class="tile-pill">Transactions</span>
+                        <span class="tile-pill">Alerts</span>
+                        <span class="tile-pill">Agent Trace</span>
+                        <span class="tile-pill">Disputes</span>
+                        <span class="tile-pill">Risk Chart</span>
+                        <span class="tile-pill">Accounts</span>
+                    </div>
+                    <div class="detail" style="text-align:center;margin-top:5px;">WebSocket live &middot; Auto-reconnect</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="h-arrow"><svg viewBox="0 0 36 18"><line class="a-line-bright" x1="0" y1="9" x2="26" y2="9"/><polygon class="a-head" points="24,4 32,9 24,14"/><circle class="a-dot" cx="5" cy="9" r="2" style="animation-delay:2.4s"/></svg></div>
+
+        <!-- PHASE 9: Infrastructure -->
+        <div class="phase">
+            <div class="phase-header">
+                <div class="phase-num">9</div>
+                <div class="phase-title">Infrastructure</div>
+            </div>
+            <div class="phase-inner">
+                <div class="card" style="width:175px;">
+                    <div class="card-icon has-bg">
+                        <img src="https://cdn.worldvectorlogo.com/logos/docker.svg" alt="Docker" onerror="this.parentElement.innerHTML='<div style=font-size:1.5rem>🐳</div>'">
+                    </div>
+                    <h3 class="text-blue">Docker Compose</h3>
+                    <p>One-command deploy</p>
+                    <div class="sub-row">
+                        <div class="sub-card">
+                            <div class="nm">Redpanda</div>
+                            <div class="ds">:19092</div>
+                        </div>
+                        <div class="sub-card">
+                            <div class="nm">Neo4j</div>
+                            <div class="ds">:7687</div>
+                        </div>
+                        <div class="sub-card">
+                            <div class="nm">Redis</div>
+                            <div class="ds">:6379</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="footer">
+        Aegis &middot; Autonomous Financial Governance &middot; CMU Hackathon 2026
+    </div>
+
+</div>
+</body>
+</html>

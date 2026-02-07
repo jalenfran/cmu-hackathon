@@ -40,7 +40,8 @@
       "Bash(break)",
       "Bash(fi)",
       "Bash(done)",
-      "Bash(/Users/farhan/Documents/GitHub/cmu-hackathon/backend/.venv/bin/python:*)"
+      "Bash(/Users/farhan/Documents/GitHub/cmu-hackathon/backend/.venv/bin/python:*)",
+      "Bash(wc -l:*)"
     ]
   }
 }

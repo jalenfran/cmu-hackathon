@@ -196,6 +196,23 @@ A breakdown of every technology used in this project, why it was chosen, and wha
 
 ---
 
+## Notifications
+
+### Slack Incoming Webhooks
+
+**What it is:** HTTP webhooks that post messages to Slack channels.
+
+**Why we use it:**
+- Real-time alerts when the AI agent blocks a fraudulent transaction — posts to #fraud-alerts with transaction details and confidence score
+- Notifies #human-reviews when an alert needs human attention (FLAG_FOR_REVIEW verdict)
+- Sends a follow-up to #human-reviews when a human resolves a flagged alert
+- Fire-and-forget via `asyncio.create_task` — never blocks the pipeline
+- Optional: leave `WEBHOOK_URL` and `WEBHOOK_URL_HUMAN` empty in `.env` to disable
+
+**Why not email/push?** Slack is the standard for ops teams. Webhooks are trivial to set up (api.slack.com/apps → Incoming Webhooks). Same format works for Discord, Teams, or any HTTP endpoint.
+
+---
+
 ## Infrastructure
 
 ### Docker + Docker Compose
@@ -235,6 +252,7 @@ A breakdown of every technology used in this project, why it was chosen, and wha
 | Ollama + Llama 3 | LLM | Local inference, no API keys, data privacy |
 | Neo4j | Graph DB | Fraud ring detection via graph traversal |
 | Redis | Cache | Sub-ms velocity tracking, per-account stats |
+| Slack Webhooks | Notifications | Real-time BLOCK/review/resolution alerts (optional) |
 | React + TypeScript | Frontend | Component-based UI, type safety, real-time state |
 | Tailwind CSS | Styling | Rapid prototyping, consistent design tokens |
 | Recharts | Charts | Declarative React charts, smooth real-time updates |

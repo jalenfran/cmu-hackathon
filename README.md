@@ -63,7 +63,7 @@ curl http://localhost:8000/api/health
 
 ## Architecture
 
-See [ARCHITECTURE.md](ARCHITECTURE.md) for the full system design and [TECH_STACK.md](TECH_STACK.md) for a breakdown of every technology with justifications.
+See [ARCHITECTURE.md](ARCHITECTURE.md) for the full system design, [TECH_STACK.md](TECH_STACK.md) for a breakdown of every technology with justifications, and [PRESENTATION.md](PRESENTATION.md) for the Figma AI diagram prompt.
 
 ```
 Nessie API / Mock ──> Redpanda ──> Anomaly Engine (IsolationForest + FAISS)
@@ -232,5 +232,6 @@ cmu-hackathon/
 ├── docker-compose.yml         # Infrastructure (Redpanda, Neo4j, Redis)
 ├── ARCHITECTURE.md            # Detailed system architecture
 ├── TECH_STACK.md              # Technology justifications
+├── PRESENTATION.md            # Figma AI diagram prompt for slides
 └── .env.example               # Environment variable template
 ```
