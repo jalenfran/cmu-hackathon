@@ -40,23 +40,24 @@ export function AgentConsole({ traces }: AgentConsoleProps) {
 
   // Auto-dismiss completed tabs after 15 seconds
   useEffect(() => {
+    const timers = dismissTimers.current;
     for (const [alertId, alertTraces] of allInvestigations) {
       const hasVerdict = alertTraces.some(t => t.step_type === 'verdict');
-      if (hasVerdict && !dismissedTabs.has(alertId) && !dismissTimers.current.has(alertId)) {
+      if (hasVerdict && !dismissedTabs.has(alertId) && !timers.has(alertId)) {
         const timer = setTimeout(() => {
           setDismissedTabs(prev => {
             const next = new Set(prev);
             next.add(alertId);
             return next;
           });
-          dismissTimers.current.delete(alertId);
+          timers.delete(alertId);
         }, 15000);
-        dismissTimers.current.set(alertId, timer);
+        timers.set(alertId, timer);
       }
     }
     // Cleanup timers on unmount
     return () => {
-      dismissTimers.current.forEach(timer => clearTimeout(timer));
+      timers.forEach(timer => clearTimeout(timer));
     };
   }, [allInvestigations, dismissedTabs]);
 

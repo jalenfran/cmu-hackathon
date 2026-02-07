@@ -1,7 +1,7 @@
 import { useRef, useMemo, useEffect, useState } from "react";
 import { Group, Vector3, QuadraticBezierCurve3, BufferGeometry, Float32BufferAttribute } from "three";
 import { useFrame } from "@react-three/fiber";
-import { topCities, latLngToVector3, getRandomCities, City } from "../../data/cities";
+import { latLngToVector3, getRandomCities, City } from "../../data/cities";
 
 interface Connection {
   from: City;

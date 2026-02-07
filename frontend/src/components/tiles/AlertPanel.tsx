@@ -202,7 +202,7 @@ export function AlertPanel({ alerts, agentTraces = [], activeInvestigationIds }:
     if (awaitingReview && expandedId !== awaitingReview.id) {
       setExpandedId(awaitingReview.id);
     }
-  }, [alerts]);
+  }, [alerts, expandedId]);
 
   // Sort alerts: awaiting_review first, then active investigations, then by recency
   // Limit to 15 visible alerts to prevent infinite stacking

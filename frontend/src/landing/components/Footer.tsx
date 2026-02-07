@@ -60,13 +60,13 @@ const Footer = () => {
             {/* Social links */}
             <div className="flex gap-4">
               {["X", "LinkedIn", "GitHub"].map((social) => (
-                <a
+                <button
                   key={social}
-                  href="#"
+                  type="button"
                   className="w-9 h-9 rounded-full border border-border/50 flex items-center justify-center text-muted-foreground hover:text-foreground hover:border-foreground/50 transition-colors"
                 >
                   <span className="text-xs font-medium">{social[0]}</span>
-                </a>
+                </button>
               ))}
             </div>
           </motion.div>
