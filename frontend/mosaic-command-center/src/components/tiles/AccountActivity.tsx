@@ -82,10 +82,13 @@ function KYCBadge({ accountId }: { accountId: string }) {
             </span>
           </div>
           <div className="space-y-1 text-gray-400">
-            <div>Address Match: {kyc.address_match ?
+            <div>Location Familiar: {kyc.location_familiar ?
               <span className="text-emerald-400">Yes</span> :
-              <span className="text-red-400">No</span>}
+              <span className="text-red-400">No - New Location</span>}
             </div>
+            {kyc.familiar_locations && kyc.familiar_locations.length > 0 && (
+              <div className="text-xs text-gray-500">Known: {kyc.familiar_locations.slice(0, 5).map(l => l.charAt(0).toUpperCase() + l.slice(1)).join(', ')}</div>
+            )}
             {kyc.customer_id && (
               <div>Customer: <span className="font-mono text-gray-300">{kyc.customer_id.slice(0, 10)}...</span></div>
             )}

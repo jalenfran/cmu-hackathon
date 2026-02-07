@@ -16,6 +16,7 @@ class TransactionEvent(BaseModel):
     latitude: Optional[float] = None
     longitude: Optional[float] = None
     city: Optional[str] = None
+    state: Optional[str] = None
     country: str = "US"
     timestamp: str
     risk_score: float = 0.0
@@ -74,6 +75,7 @@ class KYCResult(BaseModel):
     risk_level: str = "low"  # low, medium, high, critical
     risk_score: float = 0.0  # 0-100
     flags: list[str] = []
-    address_match: bool = True
+    location_familiar: bool = True
+    familiar_locations: list[str] = []
     account_age_days: int = 30
     assessed_at: str = ""

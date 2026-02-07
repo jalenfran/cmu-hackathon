@@ -12,7 +12,6 @@ const CATEGORY_COLORS: Record<string, string> = {
   Grocery: '#10b981',
   Gas: '#047857',
   Restaurant: '#34d399',
-  restaurant: '#34d399',
   Retail: '#0d9488',
   Transport: '#14b8a6',
   Online: '#0f766e',
@@ -20,11 +19,6 @@ const CATEGORY_COLORS: Record<string, string> = {
   Pharmacy: '#059669',
   Entertainment: '#10b981',
   Food: '#34d399',
-  food: '#34d399',
-  cafe: '#047857',
-  store: '#0d9488',
-  Tech: '#065f46',
-  tech: '#065f46',
   Clothing: '#14b8a6',
   Health: '#0f766e',
   Lodging: '#059669',
@@ -34,14 +28,10 @@ const CATEGORY_COLORS: Record<string, string> = {
   Financial: '#14b8a6',
   Unknown: '#374151',
   Gambling: '#0f766e',
-  furniture_store: '#065f46',
-  bar: '#059669',
-  meal_takeaway: '#34d399',
-  department_store: '#0d9488',
-  hardware_store: '#047857',
-  book_store: '#10b981',
-  car_dealer: '#14b8a6',
-  car_repair: '#0f766e',
+  'Bar & Lounge': '#059669',
+  Automotive: '#0f766e',
+  'Real Estate': '#047857',
+  Other: '#374151',
 };
 
 function MerchantAvatar({ name, category }: { name: string; category: string }) {
@@ -108,7 +98,7 @@ export function TransactionFeed({ transactions }: TransactionFeedProps) {
             <div className="flex-1 min-w-0">
               <div className="text-sm text-white truncate font-medium">{txn.merchant_name}</div>
               <div className="text-[11px] text-gray-500">
-                {txn.category} · {txn.city || 'Online'}, {txn.country}
+                {txn.category} · {txn.city || 'Online'}{txn.country === 'US' && txn.state ? `, ${txn.state}` : `, ${txn.country}`}
               </div>
             </div>
 

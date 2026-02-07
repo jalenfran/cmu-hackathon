@@ -13,6 +13,28 @@ from backend.api.models import DisputeEvent
 
 logger = logging.getLogger(__name__)
 
+# Normalize raw Nessie/Google Places categories to clean display names
+CATEGORY_MAP = {
+    "food": "Food",
+    "cafe": "Coffee",
+    "bar": "Bar & Lounge",
+    "restaurant": "Restaurant",
+    "meal_takeaway": "Restaurant",
+    "department_store": "Retail",
+    "hardware_store": "Retail",
+    "book_store": "Retail",
+    "furniture_store": "Retail",
+    "car_dealer": "Automotive",
+    "car_repair": "Automotive",
+    "store": "Retail",
+    "tech": "Electronics",
+    "natural_feature": "Other",
+    "grocery_or_supermarket": "Grocery",
+    "real_estate_agency": "Real Estate",
+    "clothing_store": "Clothing",
+    "travel_agency": "Travel Agency",
+}
+
 # Amount distributions by category (used when generating purchase amounts)
 AMOUNT_RANGES = {
     "Coffee": (3.0, 8.0),
@@ -25,39 +47,44 @@ AMOUNT_RANGES = {
     "Subscription": (9.99, 19.99),
     "Pharmacy": (5.0, 80.0),
     "Entertainment": (8.0, 45.0),
-    "food": (5.0, 80.0),
     "Food": (5.0, 80.0),
-    "cafe": (3.0, 15.0),
-    "store": (10.0, 150.0),
-    "tech": (50.0, 500.0),
-    "Tech": (50.0, 500.0),
+    "Electronics": (50.0, 500.0),
     "Clothing": (20.0, 200.0),
     "Health": (15.0, 100.0),
     "Lodging": (80.0, 300.0),
-    "furniture_store": (50.0, 500.0),
-    "bar": (8.0, 40.0),
-    "restaurant": (10.0, 50.0),
-    "meal_takeaway": (8.0, 35.0),
-    "department_store": (15.0, 200.0),
-    "hardware_store": (10.0, 150.0),
-    "book_store": (5.0, 40.0),
-    "car_dealer": (100.0, 500.0),
-    "car_repair": (50.0, 300.0),
-    "natural_feature": (10.0, 50.0),
+    "Bar & Lounge": (8.0, 40.0),
+    "Automotive": (50.0, 300.0),
+    "Other": (10.0, 50.0),
     "Gambling": (50.0, 5000.0),
+    "Jewelry": (100.0, 5000.0),
+    "Financial": (100.0, 15000.0),
+    "Luxury": (200.0, 15000.0),
+    "Unknown": (10.0, 100.0),
+    "Real Estate": (50.0, 500.0),
 }
 
 # Suspicious merchants for anomaly injection (not in Nessie - simulated fraud)
+# NOTE: Use full country names (not ISO codes) to avoid collision with US state abbreviations
+# e.g. "PA" = Pennsylvania AND Panama, "KY" = Kentucky AND Cayman Islands
 ANOMALY_MERCHANTS = [
-    {"name": "Luxury Watches Ltd", "id": "m100", "category": "Luxury", "city": "Bucharest", "country": "RO", "lat": 44.4268, "lng": 26.1025},
-    {"name": "Gold Exchange", "id": "m101", "category": "Jewelry", "city": "Lagos", "country": "NG", "lat": 6.5244, "lng": 3.3792},
-    {"name": "Electronics Mega Store", "id": "m102", "category": "Electronics", "city": "Shenzhen", "country": "CN", "lat": 22.5431, "lng": 114.0579},
-    {"name": "Unknown Vendor #4891", "id": "m103", "category": "Unknown", "city": "Muscat", "country": "OM", "lat": 23.5880, "lng": 58.3829},
-    {"name": "Crypto ATM Exchange", "id": "m104", "category": "Financial", "city": "Moscow", "country": "RU", "lat": 55.7558, "lng": 37.6173},
-    {"name": "Premium Car Rental", "id": "m105", "category": "Transport", "city": "Dubai", "country": "AE", "lat": 25.2048, "lng": 55.2708},
-    {"name": "FastCash Wire Services", "id": "m106", "category": "Financial", "city": "George Town", "country": "KY", "lat": 19.2869, "lng": -81.3674},
-    {"name": "Online Casino Palace", "id": "m107", "category": "Gambling", "city": "Valletta", "country": "MT", "lat": 35.8989, "lng": 14.5146},
-    {"name": "Shell Corp Trading", "id": "m108", "category": "Unknown", "city": "Panama City", "country": "PA", "lat": 8.9824, "lng": -79.5199},
+    {"name": "Luxury Watches Ltd", "id": "m100", "category": "Luxury", "city": "Bucharest", "state": "", "country": "Romania", "lat": 44.4268, "lng": 26.1025},
+    {"name": "Gold Exchange", "id": "m101", "category": "Jewelry", "city": "Lagos", "state": "", "country": "Nigeria", "lat": 6.5244, "lng": 3.3792},
+    {"name": "Electronics Mega Store", "id": "m102", "category": "Electronics", "city": "Shenzhen", "state": "", "country": "China", "lat": 22.5431, "lng": 114.0579},
+    {"name": "Unknown Vendor #4891", "id": "m103", "category": "Unknown", "city": "Muscat", "state": "", "country": "Oman", "lat": 23.5880, "lng": 58.3829},
+    {"name": "Crypto ATM Exchange", "id": "m104", "category": "Financial", "city": "Moscow", "state": "", "country": "Russia", "lat": 55.7558, "lng": 37.6173},
+    {"name": "Premium Car Rental", "id": "m105", "category": "Transport", "city": "Dubai", "state": "", "country": "UAE", "lat": 25.2048, "lng": 55.2708},
+    {"name": "FastCash Wire Services", "id": "m106", "category": "Financial", "city": "George Town", "state": "", "country": "Cayman Islands", "lat": 19.2869, "lng": -81.3674},
+    {"name": "Online Casino Palace", "id": "m107", "category": "Gambling", "city": "Valletta", "state": "", "country": "Malta", "lat": 35.8989, "lng": 14.5146},
+    {"name": "Shell Corp Trading", "id": "m108", "category": "Unknown", "city": "Panama City", "state": "", "country": "Panama", "lat": 8.9824, "lng": -79.5199},
+    {"name": "Diamond District Imports", "id": "m109", "category": "Jewelry", "city": "Antwerp", "state": "", "country": "Belgium", "lat": 51.2194, "lng": 4.4025},
+    {"name": "Offshore Holdings Ltd", "id": "m110", "category": "Financial", "city": "Zurich", "state": "", "country": "Switzerland", "lat": 47.3769, "lng": 8.5417},
+    {"name": "Lucky Dragon Casino", "id": "m111", "category": "Gambling", "city": "Macau", "state": "", "country": "China", "lat": 22.1987, "lng": 113.5439},
+    {"name": "Quick Transfer ATM", "id": "m112", "category": "Financial", "city": "Istanbul", "state": "", "country": "Turkey", "lat": 41.0082, "lng": 28.9784},
+    {"name": "Luxury Auto Exports", "id": "m113", "category": "Luxury", "city": "Monaco", "state": "", "country": "Monaco", "lat": 43.7384, "lng": 7.4246},
+    {"name": "Digital Assets Exchange", "id": "m114", "category": "Financial", "city": "Singapore", "state": "", "country": "Singapore", "lat": 1.3521, "lng": 103.8198},
+    {"name": "Art & Antiquities Dealer", "id": "m115", "category": "Unknown", "city": "Beirut", "state": "", "country": "Lebanon", "lat": 33.8938, "lng": 35.5018},
+    {"name": "Premium Electronics Outlet", "id": "m116", "category": "Electronics", "city": "Hong Kong", "state": "", "country": "Hong Kong", "lat": 22.3193, "lng": 114.1694},
+    {"name": "Global Wire Services", "id": "m117", "category": "Financial", "city": "Nassau", "state": "", "country": "Bahamas", "lat": 25.0343, "lng": -77.3963},
 ]
 
 # Pre-built dramatic fraud scenarios for demo injection
@@ -70,7 +97,8 @@ FRAUD_SCENARIOS = [
             "amount": 12450.00,
             "category": "Luxury",
             "city": "Bucharest",
-            "country": "RO",
+            "state": "",
+            "country": "Romania",
             "latitude": 44.4268,
             "longitude": 26.1025,
         }
@@ -83,7 +111,8 @@ FRAUD_SCENARIOS = [
             "amount": 8900.00,
             "category": "Jewelry",
             "city": "Lagos",
-            "country": "NG",
+            "state": "",
+            "country": "Nigeria",
             "latitude": 6.5244,
             "longitude": 3.3792,
         }
@@ -96,7 +125,8 @@ FRAUD_SCENARIOS = [
             "amount": 14999.99,
             "category": "Financial",
             "city": "Moscow",
-            "country": "RU",
+            "state": "",
+            "country": "Russia",
             "latitude": 55.7558,
             "longitude": 37.6173,
         }
@@ -109,7 +139,8 @@ FRAUD_SCENARIOS = [
             "amount": 4750.00,
             "category": "Gambling",
             "city": "Valletta",
-            "country": "MT",
+            "state": "",
+            "country": "Malta",
             "latitude": 35.8989,
             "longitude": 14.5146,
         }
@@ -122,7 +153,8 @@ FRAUD_SCENARIOS = [
             "amount": 9999.00,
             "category": "Financial",
             "city": "George Town",
-            "country": "KY",
+            "state": "",
+            "country": "Cayman Islands",
             "latitude": 19.2869,
             "longitude": -81.3674,
         }
@@ -135,7 +167,8 @@ FRAUD_SCENARIOS = [
             "amount": 24500.00,
             "category": "Unknown",
             "city": "Panama City",
-            "country": "PA",
+            "state": "",
+            "country": "Panama",
             "latitude": 8.9824,
             "longitude": -79.5199,
         }
@@ -148,9 +181,108 @@ FRAUD_SCENARIOS = [
             "amount": 6200.00,
             "category": "Unknown",
             "city": "Muscat",
-            "country": "OM",
+            "state": "",
+            "country": "Oman",
             "latitude": 23.5880,
             "longitude": 58.3829,
+        }
+    },
+    {
+        "name": "Diamond Smuggling - Antwerp",
+        "transaction": {
+            "merchant_name": "Diamond District Imports",
+            "merchant_id": "m109",
+            "amount": 18750.00,
+            "category": "Jewelry",
+            "city": "Antwerp",
+            "state": "",
+            "country": "Belgium",
+            "latitude": 51.2194,
+            "longitude": 4.4025,
+        }
+    },
+    {
+        "name": "Offshore Fund Transfer - Zurich",
+        "transaction": {
+            "merchant_name": "Offshore Holdings Ltd",
+            "merchant_id": "m110",
+            "amount": 49999.00,
+            "category": "Financial",
+            "city": "Zurich",
+            "state": "",
+            "country": "Switzerland",
+            "latitude": 47.3769,
+            "longitude": 8.5417,
+        }
+    },
+    {
+        "name": "High-Stakes Gambling - Macau",
+        "transaction": {
+            "merchant_name": "Lucky Dragon Casino",
+            "merchant_id": "m111",
+            "amount": 25000.00,
+            "category": "Gambling",
+            "city": "Macau",
+            "state": "",
+            "country": "China",
+            "latitude": 22.1987,
+            "longitude": 113.5439,
+        }
+    },
+    {
+        "name": "Rapid ATM Drain - Istanbul",
+        "transaction": {
+            "merchant_name": "Quick Transfer ATM",
+            "merchant_id": "m112",
+            "amount": 4999.00,
+            "category": "Financial",
+            "city": "Istanbul",
+            "state": "",
+            "country": "Turkey",
+            "latitude": 41.0082,
+            "longitude": 28.9784,
+        }
+    },
+    {
+        "name": "Luxury Purchase - Monaco",
+        "transaction": {
+            "merchant_name": "Luxury Auto Exports",
+            "merchant_id": "m113",
+            "amount": 87500.00,
+            "category": "Luxury",
+            "city": "Monaco",
+            "state": "",
+            "country": "Monaco",
+            "latitude": 43.7384,
+            "longitude": 7.4246,
+        }
+    },
+    {
+        "name": "Crypto Exchange - Singapore",
+        "transaction": {
+            "merchant_name": "Digital Assets Exchange",
+            "merchant_id": "m114",
+            "amount": 14500.00,
+            "category": "Financial",
+            "city": "Singapore",
+            "state": "",
+            "country": "Singapore",
+            "latitude": 1.3521,
+            "longitude": 103.8198,
+        }
+    },
+    {
+        "name": "Black Market Antiquities - Beirut",
+        "transaction": {
+            "merchant_name": "Art & Antiquities Dealer",
+            "merchant_id": "m115",
+            "amount": 32000.00,
+            "category": "Unknown",
+            "city": "Beirut",
+            "state": "",
+            "country": "Lebanon",
+            "latitude": 33.8938,
+            "longitude": 35.5018,
         }
     },
 ]
@@ -232,13 +364,15 @@ def load_nessie_merchants(merchants: list):
         cat = categories[0] if isinstance(categories, list) and categories else (
             categories if isinstance(categories, str) else "Retail"
         )
+        cat = CATEGORY_MAP.get(cat, cat)  # Normalize raw Nessie categories
 
         NESSIE_MERCHANTS.append({
             "name": m.get("name", "Unknown Merchant"),
             "id": m.get("_id", "unknown"),
             "category": cat,
             "city": address.get("city", "Unknown"),
-            "state": address.get("state", "US"),
+            "state": address.get("state", "PA"),
+            "country": "US",
             "lat": geocode.get("lat", 40.44) if geocode else 40.44,
             "lng": geocode.get("lng", -79.99) if geocode else -79.99,
         })
@@ -327,6 +461,7 @@ class TransactionProducer:
             "latitude": merchant.get("lat", 40.44) + random.uniform(-0.005, 0.005),
             "longitude": merchant.get("lng", -79.99) + random.uniform(-0.005, 0.005),
             "city": merchant.get("city", "Unknown"),
+            "state": merchant.get("state", "PA"),
             "country": "US",
             "timestamp": datetime.utcnow().isoformat(),
             "risk_score": 0.0,
@@ -367,6 +502,7 @@ class TransactionProducer:
                 "latitude": merchant.get("lat", 40.44) + random.uniform(-0.01, 0.01),
                 "longitude": merchant.get("lng", -79.99) + random.uniform(-0.01, 0.01),
                 "city": merchant.get("city", "Unknown"),
+                "state": merchant.get("state", "PA"),
                 "country": "US",
                 "timestamp": datetime.utcnow().isoformat(),
                 "risk_score": 0.0,
@@ -388,6 +524,7 @@ class TransactionProducer:
                 "latitude": merchant["lat"] + random.uniform(-0.01, 0.01),
                 "longitude": merchant["lng"] + random.uniform(-0.01, 0.01),
                 "city": merchant["city"],
+                "state": merchant.get("state", ""),
                 "country": merchant["country"],
                 "timestamp": datetime.utcnow().isoformat(),
                 "risk_score": 0.0,
@@ -418,6 +555,7 @@ class TransactionProducer:
             "latitude": merchant.get("lat", 40.44) + random.uniform(-0.01, 0.01),
             "longitude": merchant.get("lng", -79.99) + random.uniform(-0.01, 0.01),
             "city": merchant.get("city", "Unknown"),
+            "state": merchant.get("state", ""),
             "country": merchant.get("country", "US"),
             "timestamp": datetime.utcnow().isoformat(),
             "risk_score": 0.0,

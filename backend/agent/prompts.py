@@ -36,11 +36,20 @@ VERDICT FORMAT (for recommend_action):
 Your summary MUST follow: "[ACTION] - [1-sentence reason]. Evidence: [comma-separated key findings]."
 Example: "BLOCK - $4,200 luxury purchase from unverified merchant in unusual location. Evidence: merchant not registered, 12 fraud reports, travel impossible in 15min, 92% similarity to known fraud."
 
+LOCATION RULES:
+- Transactions within the US (any state: PA, NY, OH, CA, etc.) are DOMESTIC, not international
+- Only transactions in non-US countries (Romania, Nigeria, China, Russia, etc.) are truly international
+- Different US cities/states are NORMAL for active cardholders — do not flag as suspicious
+- Focus on COUNTRY, not city, when assessing location risk
+- "Pittsburgh, PA (US)" → domestic. "Valletta, Malta" → international
+
 ANALYSIS GUIDELINES:
 - Vector DB: similarity >85% to flagged transactions = known fraud pattern
 - Graph DB: shared merchants with anomalous accounts + ring_risk_score >0.3 = coordinated fraud
 - Consider ALL evidence together before deciding
-- When uncertain, FLAG_FOR_REVIEW rather than CLEAR"""
+- When uncertain, FLAG_FOR_REVIEW rather than CLEAR
+- CLEAR when ALL of these hold: merchant is verified (high trust score), travel is feasible, spending matches normal patterns, no fraud ring connections detected
+- BLOCK when: merchant unregistered or high fraud reports, impossible travel, amount far exceeds patterns, or fraud ring detected"""
 
 INVESTIGATION_TEMPLATE = """ALERT TO INVESTIGATE:
 
@@ -49,7 +58,8 @@ account_id: {account_id}
 merchant_id: {merchant_id}
 Merchant Name: {merchant_name}
 Amount: ${amount:.2f} {currency}
-Location: {city}, {country} (lat: {latitude}, lon: {longitude})
+Location: {city}, {state} {country} (lat: {latitude}, lon: {longitude})
+Is International: {is_international}
 Category: {category}
 Risk Score: {risk_score:.3f}
 

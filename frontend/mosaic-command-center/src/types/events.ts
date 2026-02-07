@@ -9,6 +9,7 @@ export interface TransactionEvent {
   latitude: number | null;
   longitude: number | null;
   city: string | null;
+  state?: string | null;
   country: string;
   timestamp: string;
   risk_score: number;
@@ -67,7 +68,8 @@ export interface KYCResult {
   risk_level: 'low' | 'medium' | 'high' | 'critical';
   risk_score: number;
   flags: string[];
-  address_match: boolean;
+  location_familiar: boolean;
+  familiar_locations: string[];
   account_age_days: number;
   assessed_at: string;
 }

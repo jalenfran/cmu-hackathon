@@ -286,6 +286,9 @@ class FraudInvestigatorAgent:
         risk_factors_str = "\n".join(
             f"  - {f}" for f in alert_data.get("risk_factors", ["Statistical anomaly detected"])
         )
+        country = txn.get("country", "US")
+        state = txn.get("state", "")
+        is_intl = "YES — non-US country" if country != "US" else "NO — domestic US transaction"
         investigation_input = INVESTIGATION_TEMPLATE.format(
             alert_id=alert_id,
             account_id=txn.get("account_id", "unknown"),
@@ -294,7 +297,9 @@ class FraudInvestigatorAgent:
             amount=txn.get("amount", 0),
             currency=txn.get("currency", "USD"),
             city=txn.get("city", "Unknown"),
-            country=txn.get("country", "Unknown"),
+            state=state if state else "",
+            country=country,
+            is_international=is_intl,
             latitude=txn.get("latitude", 0),
             longitude=txn.get("longitude", 0),
             category=txn.get("category", "Unknown"),
@@ -322,6 +327,8 @@ class FraudInvestigatorAgent:
             max_steps = 6
             final_output = ""
             evidence_gathered = []
+            tools_called: set = set()  # Track (tool_name, input_json) to prevent duplicates
+            successful_tool_calls = 0
             parse_failures = 0
 
             await self._emit_trace(alert_id, "thinking", "[1/6] Starting fraud investigation...")
@@ -344,6 +351,15 @@ class FraudInvestigatorAgent:
 
                 if tool_name and tool_name in TOOL_MAP:
                     parse_failures = 0  # reset on success
+
+                    # Deduplication: skip if we already called this exact tool with these inputs
+                    if tool_name != "recommend_action":
+                        call_key = (tool_name, json.dumps(tool_input, sort_keys=True))
+                        if call_key in tools_called:
+                            conversation += f"\n{llm_text}\n\nObservation: Already called {tool_name} with these inputs — use a DIFFERENT tool next."
+                            continue
+                        tools_called.add(call_key)
+
                     await self._emit_trace(
                         alert_id, "tool_call",
                         f"[{step_number}/6] {tool_name}({json.dumps(tool_input)[:300]})"
@@ -358,16 +374,25 @@ class FraudInvestigatorAgent:
 
                     # Track evidence for fallback verdict
                     evidence_gathered.append(f"[{tool_name}] {tool_result[:200]}")
+                    successful_tool_calls += 1
 
                     # Truncate tool result in conversation to prevent context bloat
                     truncated_result = tool_result[:400]
-                    conversation += f"\n{llm_text}\nObservation: {truncated_result}\n\nContinue. Output ONE Thought and ONE Action."
+
+                    # Early nudge: after 4 tools, remind agent to wrap up
+                    if successful_tool_calls >= 4:
+                        conversation += (
+                            f"\n{llm_text}\nObservation: {truncated_result}\n\n"
+                            f"You have used {successful_tool_calls} of 6 steps. Call recommend_action NEXT to submit your verdict."
+                        )
+                    else:
+                        conversation += f"\n{llm_text}\nObservation: {truncated_result}\n\nContinue. Output ONE Thought and ONE Action."
 
                 else:
                     parse_failures += 1
-                    # If we already have evidence and LLM mentions a verdict keyword, accept it
+                    # If we already have evidence and LLM mentions a verdict keyword, use auto_verdict
                     if evidence_gathered and any(kw in llm_text.upper() for kw in ["BLOCK", "CLEAR", "FLAG", "REVIEW"]):
-                        final_output = llm_text
+                        final_output = self._auto_verdict(alert_data, evidence_gathered)
                         break
                     # Give the model one retry with a corrective prompt
                     if parse_failures >= 2:
@@ -401,7 +426,8 @@ class FraudInvestigatorAgent:
                         await self._emit_trace(alert_id, "tool_result", tool_result[:600] + ("..." if len(tool_result) > 600 else ""))
                         final_output = tool_result
                     else:
-                        final_output = llm_text
+                        # Don't dump raw LLM text — use structured auto-verdict instead
+                        final_output = self._auto_verdict(alert_data, evidence_gathered)
                 except Exception as e:
                     logger.warning(f"Nudge LLM call failed: {e}")
 

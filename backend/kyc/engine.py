@@ -39,7 +39,7 @@ class KYCRiskEngine:
 
         Returns a dict with:
             account_id, customer_id, risk_level, risk_score (0-100),
-            flags (list[str]), address_match, account_age_days, assessed_at
+            flags (list[str]), location_familiar, familiar_locations, account_age_days, assessed_at
         """
         customer_id = _account_to_customer.get(account_id)
         customer = _customer_data.get(customer_id, {}) if customer_id else {}
@@ -50,30 +50,54 @@ class KYCRiskEngine:
         flags: list[str] = []
         score = 0.0
 
-        # 1. Address consistency - do transactions match customer address?
-        if transaction_history and customer_city:
-            txn_cities = [
-                t.get("city", "").lower()
-                for t in transaction_history
-                if t.get("city")
-            ]
-            if txn_cities:
-                local_count = sum(
-                    1 for c in txn_cities
-                    if customer_city in c or c in customer_city
+        # 1. Location familiarity — is this transaction in a city/state the customer has used before?
+        location_familiar = True  # default safe
+        familiar_locations: list[str] = []
+
+        if transaction_history:
+            # The most recent transaction is the one under investigation
+            current_txn = transaction_history[-1]
+            current_txn_city = current_txn.get("city", "").lower().strip()
+            current_txn_state = current_txn.get("state", "").upper().strip()
+            current_txn_country = current_txn.get("country", "US")
+
+            # Build set of familiar cities from prior history (exclude the current txn)
+            prior_history = transaction_history[:-1]
+            if prior_history and current_txn_city:
+                prior_cities = set(
+                    t.get("city", "").lower().strip()
+                    for t in prior_history
+                    if t.get("city")
                 )
-                match_pct = local_count / len(txn_cities) * 100
-                address_match = match_pct > 30
-                if match_pct < 10:
+                prior_states = set(
+                    t.get("state", "").upper().strip()
+                    for t in prior_history
+                    if t.get("state")
+                )
+                familiar_locations = sorted(prior_cities - {""})
+
+                # Familiar if: same city seen before, OR same state seen before (for US)
+                city_match = current_txn_city in prior_cities
+                state_match = current_txn_country == "US" and current_txn_state and current_txn_state in prior_states
+
+                if city_match or state_match:
+                    location_familiar = True
+                elif current_txn_country != "US":
+                    # International transaction in a country never visited
+                    location_familiar = False
                     flags.append(
-                        f"Transaction locations don't match registered address "
-                        f"({customer_city.title()}: {match_pct:.0f}% match)"
+                        f"Unfamiliar international location: {current_txn_city.title()}, {current_txn_country} "
+                        f"(no prior transactions in this country)"
                     )
                     score += 25
-            else:
-                address_match = True  # No city data, assume match
-        else:
-            address_match = True
+                else:
+                    # Domestic but new city/state — mild flag
+                    location_familiar = False
+                    flags.append(
+                        f"New domestic location: {current_txn_city.title()}, {current_txn_state or 'US'} "
+                        f"(not seen in prior {len(prior_history)} transactions)"
+                    )
+                    score += 10
 
         # 2. Spending velocity - high spend on accounts
         if transaction_history:
@@ -169,7 +193,8 @@ class KYCRiskEngine:
             "risk_level": risk_level,
             "risk_score": round(score, 1),
             "flags": flags,
-            "address_match": address_match,
+            "location_familiar": location_familiar,
+            "familiar_locations": familiar_locations[:8],
             "account_age_days": 30,  # Nessie doesn't provide creation date
             "assessed_at": datetime.utcnow().isoformat(),
         }

@@ -43,11 +43,20 @@ def check_account_history(account_id: str) -> str:
     total = 0.0
     for txn in recent:
         total += txn.get("amount", 0)
+        # Show "City, STATE" for US (domestic), "City, COUNTRY" for international
+        country = txn.get("country", "US")
+        state = txn.get("state", "")
+        if country == "US" and state:
+            location = f"{txn.get('city', 'Unknown')}, {state} (US)"
+        elif country == "US":
+            location = f"{txn.get('city', 'Unknown')}, US"
+        else:
+            location = f"{txn.get('city', 'Unknown')}, {country} (INTERNATIONAL)"
         lines.append(
             f"  - {txn.get('timestamp', 'N/A')[:16]} | "
             f"${txn.get('amount', 0):.2f} | "
             f"{txn.get('merchant_name', 'Unknown')} | "
-            f"{txn.get('city', 'Unknown')}, {txn.get('country', 'US')}"
+            f"{location}"
         )
     lines.append(f"\nAverage transaction: ${total / max(len(recent), 1):.2f}")
     lines.append(f"Total in period: ${total:.2f}")
@@ -65,7 +74,15 @@ def verify_merchant(merchant_id: str) -> str:
     lines = [f"Merchant Verification Report for {merchant_id} (source: {source}):"]
     lines.append(f"  Name: {data.get('name', 'Unknown')}")
     lines.append(f"  Category: {data.get('category', 'Unknown')}")
-    lines.append(f"  Location: {data.get('city', 'Unknown')}, {data.get('country', 'Unknown')}")
+    # Show state for US merchants, country for international
+    m_country = data.get("country", "Unknown")
+    m_state = data.get("state", "")
+    if m_country == "US" and m_state:
+        lines.append(f"  Location: {data.get('city', 'Unknown')}, {m_state} (US - Domestic)")
+    elif m_country == "US":
+        lines.append(f"  Location: {data.get('city', 'Unknown')}, US (Domestic)")
+    else:
+        lines.append(f"  Location: {data.get('city', 'Unknown')}, {m_country} (INTERNATIONAL)")
     lines.append(f"  Registration Status: {data.get('registration', 'Not Found')}")
     lines.append(f"  Years in Business: {data.get('years', 'Unknown')}")
     lines.append(f"  Fraud Reports: {data.get('fraud_reports', 0)}")
@@ -115,9 +132,10 @@ def get_account_risk_profile(account_id: str) -> str:
         international_count = sum(1 for c in countries if c != "US")
         international_pct = round(international_count / max(len(countries), 1) * 100, 1)
 
-        # Gather unique locations
+        # Gather unique locations (show state for US, country for international)
         locations = list(set(
-            f"{t.get('city', 'Unknown')}, {t.get('country', 'US')}"
+            f"{t.get('city', 'Unknown')}, {t.get('state', '')}" if t.get("country", "US") == "US" and t.get("state")
+            else f"{t.get('city', 'Unknown')}, {t.get('country', 'US')}"
             for t in history[-20:]
         ))
 
@@ -154,7 +172,7 @@ def get_account_risk_profile(account_id: str) -> str:
             "max_transaction": round(random.uniform(200, 800), 2),
             "previous_fraud_alerts": random.randint(0, 2),
             "international_txn_pct": round(random.uniform(0, 15), 1),
-            "usual_locations": ["Pittsburgh, PA", "Philadelphia, PA"],
+            "usual_locations": ["Pittsburgh, PA", "Philadelphia, PA", "Cleveland, OH", "New York, NY"],
             "risk_tier": random.choice(["Low", "Low", "Low", "Medium", "Medium"]),
         }
         source = "simulated"
@@ -181,7 +199,9 @@ def run_kyc_check(account_id: str) -> str:
     lines = [f"KYC Identity Risk Assessment for {account_id}:"]
     lines.append(f"  Risk Level: {result['risk_level'].upper()}")
     lines.append(f"  Risk Score: {result['risk_score']}/100")
-    lines.append(f"  Address Match: {'Yes' if result['address_match'] else 'NO - MISMATCH'}")
+    lines.append(f"  Location Familiar: {'Yes' if result['location_familiar'] else 'NO - NEW LOCATION'}")
+    if result.get('familiar_locations'):
+        lines.append(f"  Known Locations: {', '.join(loc.title() for loc in result['familiar_locations'][:6])}")
     lines.append(f"  Customer ID: {result['customer_id'] or 'Unknown'}")
     lines.append(f"  Flags:")
     for flag in result["flags"]:
@@ -364,14 +384,19 @@ def detect_fraud_ring(account_id: str) -> str:
 
 
 def _generate_mock_history(account_id: str) -> list:
-    """Generate realistic transaction history for an account"""
+    """Generate realistic transaction history for an account across multiple US cities"""
+    # (name, category, city, state, country)
     merchants = [
-        ("Starbucks", "Coffee", "Pittsburgh", "US"),
-        ("Giant Eagle", "Grocery", "Pittsburgh", "US"),
-        ("Shell Gas", "Gas", "Pittsburgh", "US"),
-        ("Chipotle", "Restaurant", "Pittsburgh", "US"),
-        ("Amazon", "Online", "Seattle", "US"),
-        ("Target", "Retail", "Pittsburgh", "US"),
+        ("Starbucks", "Coffee", "Pittsburgh", "PA", "US"),
+        ("Giant Eagle", "Grocery", "Pittsburgh", "PA", "US"),
+        ("Shell Gas", "Gas", "Pittsburgh", "PA", "US"),
+        ("Chipotle", "Restaurant", "Pittsburgh", "PA", "US"),
+        ("Amazon", "Online", "Seattle", "WA", "US"),
+        ("Target", "Retail", "Pittsburgh", "PA", "US"),
+        ("Walmart", "Retail", "Philadelphia", "PA", "US"),
+        ("Whole Foods", "Grocery", "New York", "NY", "US"),
+        ("Home Depot", "Retail", "Cleveland", "OH", "US"),
+        ("Costco", "Grocery", "Chicago", "IL", "US"),
     ]
     history = []
     base_time = datetime.utcnow() - timedelta(days=30)
@@ -381,7 +406,8 @@ def _generate_mock_history(account_id: str) -> list:
             "merchant_name": m[0],
             "category": m[1],
             "city": m[2],
-            "country": m[3],
+            "state": m[3],
+            "country": m[4],
             "amount": round(random.uniform(5, 120), 2),
             "timestamp": (base_time + timedelta(days=i * 1.5, hours=random.randint(8, 20))).isoformat(),
         })
@@ -390,14 +416,20 @@ def _generate_mock_history(account_id: str) -> list:
 
 
 def _generate_mock_merchant(merchant_id: str) -> dict:
-    """Generate mock merchant data"""
-    suspicious_ids = {"m100", "m101", "m102", "m103", "m104", "m105", "m106", "m107", "m108"}
-    if merchant_id in suspicious_ids:
+    """Generate mock merchant data — uses real ANOMALY_MERCHANTS info for suspicious IDs"""
+    from backend.streaming.producer import ANOMALY_MERCHANTS
+
+    # Build lookup from ANOMALY_MERCHANTS (keyed by id)
+    anomaly_lookup = {m["id"]: m for m in ANOMALY_MERCHANTS}
+
+    if merchant_id in anomaly_lookup:
+        m = anomaly_lookup[merchant_id]
         data = {
-            "name": "Unknown/Unverified Merchant",
-            "category": "Unverified",
-            "city": "Unknown",
-            "country": "Unknown",
+            "name": m["name"],
+            "category": m["category"],
+            "city": m["city"],
+            "state": m.get("state", ""),
+            "country": m["country"],
             "registration": "NOT REGISTERED",
             "years": "< 1 year",
             "fraud_reports": random.randint(5, 25),
@@ -408,6 +440,7 @@ def _generate_mock_merchant(merchant_id: str) -> dict:
             "name": f"Verified Business #{merchant_id}",
             "category": "Retail",
             "city": "Pittsburgh",
+            "state": "PA",
             "country": "US",
             "registration": "VERIFIED",
             "years": f"{random.randint(3, 20)} years",

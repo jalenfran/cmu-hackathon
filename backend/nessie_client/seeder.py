@@ -8,6 +8,7 @@ from typing import Dict, List, Any, Optional
 from backend.nessie_client.client import NessieClient
 from backend.agent.tools import set_account_history, set_merchant_data
 from backend.kyc.engine import set_customer_data, set_account_customer_mapping
+from backend.streaming.producer import CATEGORY_MAP
 
 logger = logging.getLogger(__name__)
 
@@ -99,13 +100,16 @@ def _purchases_to_history(purchases) -> List[dict]:
         merchant_id = p.merchant_id or p.merchant or ""
         merchant_info = _merchant_cache.get(merchant_id, {})
 
+        raw_cat = merchant_info.get("category", "Purchase")
+        clean_cat = CATEGORY_MAP.get(raw_cat, raw_cat)
+
         history.append({
             "id": p.id,
             "merchant_name": merchant_info.get("name", merchant_id),
             "merchant_id": merchant_id,
-            "category": merchant_info.get("category", "Purchase"),
+            "category": clean_cat,
             "city": merchant_info.get("city", "Unknown"),
-            "country": "US",
+            "country": merchant_info.get("country", "US"),
             "amount": p.amount,
             "timestamp": p.date or "",
             "latitude": p.latitude or merchant_info.get("lat"),
@@ -129,19 +133,21 @@ async def _seed_purchase_history(
         merchant_id = random.choice(merchant_ids)
         merchant_info = _merchant_cache[merchant_id]
         category = merchant_info.get("category", "Retail")
+        category = CATEGORY_MAP.get(category, category)  # Normalize raw categories
 
         # Realistic amount based on category
         amount_ranges = {
-            "food": (5.0, 80.0), "Food": (5.0, 80.0),
-            "cafe": (3.0, 15.0),
-            "store": (10.0, 150.0),
-            "tech": (50.0, 500.0), "Tech": (50.0, 500.0),
+            "Coffee": (3.0, 8.0),
+            "Grocery": (20.0, 150.0),
+            "Food": (5.0, 80.0),
+            "Restaurant": (10.0, 50.0),
+            "Retail": (15.0, 200.0),
+            "Bar & Lounge": (8.0, 40.0),
+            "Automotive": (50.0, 300.0),
+            "Electronics": (50.0, 500.0),
             "Clothing": (20.0, 200.0),
-            "restaurant": (10.0, 50.0),
-            "bar": (8.0, 40.0),
             "Lodging": (80.0, 300.0),
-            "meal_takeaway": (8.0, 35.0),
-            "department_store": (15.0, 200.0),
+            "Other": (10.0, 50.0),
         }
         amount_range = amount_ranges.get(category, (5.0, 100.0))
         amount = round(random.uniform(*amount_range), 2)
@@ -287,12 +293,14 @@ async def _fetch_merchants(client: NessieClient) -> list:
             cat = categories[0] if isinstance(categories, list) and categories else (
                 categories if isinstance(categories, str) else "Retail"
             )
+            cat = CATEGORY_MAP.get(cat, cat)  # Normalize raw Nessie categories
 
             merchant_info = {
                 "name": m.get("name", "Unknown"),
                 "category": cat,
                 "city": address.get("city", "Unknown"),
-                "state": address.get("state", "US"),
+                "state": address.get("state", "PA"),
+                "country": "US",
                 "registration": "VERIFIED",
                 "years": "Established",
                 "fraud_reports": 0,
