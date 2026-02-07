@@ -48,12 +48,13 @@ cd ..
 python -m uvicorn backend.api.server:app --host 0.0.0.0 --port 8000
 
 # 6. Install and start the frontend (new terminal)
-cd frontend/mosaic-command-center
+cd frontend
 npm install
 npm start
 
-# 7. Open the dashboard
-open http://localhost:3000
+# 7. Open the app
+open http://localhost:3000        # Landing page
+open http://localhost:3000/demo   # Dashboard
 ```
 
 Verify everything is running:
@@ -90,7 +91,7 @@ Nessie API / Mock ──> Redpanda ──> Anomaly Engine (IsolationForest + FAI
 | **ML** | scikit-learn Isolation Forest, FAISS + SentenceTransformers |
 | **AI Agent** | LangChain + Ollama / Llama 3 (ReAct pattern, 8 tools, 3 parallel workers) |
 | **Backend** | FastAPI, WebSockets, Pydantic |
-| **Frontend** | React 19, TypeScript, Tailwind CSS, Recharts |
+| **Frontend** | React 19, TypeScript, Tailwind CSS, Recharts, GSAP, Three.js, Framer Motion |
 | **Graph** | Neo4j (fraud ring detection) |
 | **Cache** | Redis (transaction velocity tracking) |
 | **Banking API** | Capital One Nessie (optional) |
@@ -136,6 +137,12 @@ Nessie API / Mock ──> Redpanda ──> Anomaly Engine (IsolationForest + FAI
 - Future investigations retrieve similar past cases and their outcomes
 - Human verdicts are tagged with `verdict_source: "human"` for higher weight
 - The system adapts without retraining any models
+
+### Landing Page
+- Animated pixel mosaic hero with GSAP scroll-triggered sections
+- 3D interactive globe (Three.js / React Three Fiber) with city connections
+- Feature cards, buzzword marquee, CTA section
+- "Try the Demo" / "Schedule Demo" buttons navigate to the live dashboard
 
 ### Real-Time Dashboard
 - Live transaction feed, alert panel with expandable evidence, dispute resolution panel
@@ -222,13 +229,20 @@ cmu-hackathon/
 │   ├── streaming/             # Kafka producer + consumer
 │   ├── vector_store/          # FAISS similarity search
 │   └── requirements.txt
-├── frontend/
-│   └── mosaic-command-center/ # React 19 + TypeScript + Tailwind CSS
-│       └── src/
-│           ├── components/tiles/  # 7 dashboard tiles
-│           ├── hooks/             # WebSocket hook
-│           ├── types/             # Event type definitions
-│           └── utils/             # Formatters
+├── frontend/                  # React 19 + TypeScript + Tailwind CSS
+│   └── src/
+│       ├── landing/               # Landing page (ported from aegis-tartanhacks)
+│       │   ├── LandingPage.tsx    #   Main landing page component
+│       │   ├── components/        #   Hero, features, globe, CTA, footer
+│       │   ├── styles/            #   Scoped CSS variables
+│       │   ├── ui/                #   shadcn button & separator
+│       │   └── lib/               #   cn() utility
+│       ├── components/tiles/      # 7 dashboard tiles
+│       ├── hooks/                 # WebSocket hook
+│       ├── types/                 # Event type definitions
+│       ├── utils/                 # Formatters
+│       ├── App.tsx                # Router: / = landing, /demo = dashboard
+│       └── DashboardApp.tsx       # Dashboard app (original App)
 ├── docker-compose.yml         # Infrastructure (Redpanda, Neo4j, Redis)
 ├── ARCHITECTURE.md            # Detailed system architecture
 ├── TECH_STACK.md              # Technology justifications
