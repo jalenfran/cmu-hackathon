@@ -71,38 +71,50 @@ export function AgentConsole({ traces }: AgentConsoleProps) {
                 </div>
               </div>
             )}
-            {traces.map((trace, i) => (
-              <div
-                key={i}
-                className={`flex gap-2 py-0.5 px-1 rounded ${
-                  trace.step_type === 'verdict' ? 'bg-emerald-500/5 border-l-2 border-emerald-500/50 pl-2' : ''
-                }`}
-                style={{
-                  animation: i === traces.length - 1 ? 'fadeIn 0.3s ease-out' : undefined,
-                }}
-              >
-                <span className="text-gray-700 flex-shrink-0 w-14 text-[10px]">
-                  {formatTime(trace.timestamp)}
-                </span>
-                <span
-                  className="font-bold flex-shrink-0 w-20 text-[11px]"
-                  style={{ color: getTraceColor(trace.step_type) }}
-                >
-                  {getTracePrefix(trace.step_type)}
-                </span>
-                <span
-                  className="break-words leading-relaxed"
+            {traces.map((trace, i) => {
+              const isLast = i === traces.length - 1;
+              const isVerdict = trace.step_type === 'verdict';
+              return (
+                <div
+                  key={i}
+                  className={`flex gap-2 py-0.5 px-1 rounded ${
+                    isVerdict ? 'bg-emerald-500/5 border-l-2 border-emerald-500/50 pl-2 verdict-scanline' : ''
+                  }`}
                   style={{
-                    color: trace.step_type === 'verdict' ? '#ffffff' :
-                           trace.step_type === 'tool_result' ? '#9ca3af' : '#d1d5db',
-                    fontWeight: trace.step_type === 'verdict' ? 'bold' : undefined,
-                    fontStyle: trace.step_type === 'tool_result' ? 'italic' : undefined,
+                    animation: isLast ? 'traceSlideIn 0.3s ease-out' : undefined,
                   }}
                 >
-                  {trace.content}
-                </span>
+                  <span className="text-gray-700 flex-shrink-0 w-14 text-[10px]">
+                    {formatTime(trace.timestamp)}
+                  </span>
+                  <span
+                    className="font-bold flex-shrink-0 w-20 text-[11px]"
+                    style={{ color: getTraceColor(trace.step_type) }}
+                  >
+                    {getTracePrefix(trace.step_type)}
+                  </span>
+                  <span
+                    className="break-words leading-relaxed"
+                    style={{
+                      color: isVerdict ? '#ffffff' :
+                             trace.step_type === 'tool_result' ? '#9ca3af' : '#d1d5db',
+                      fontWeight: isVerdict ? 'bold' : undefined,
+                      fontStyle: trace.step_type === 'tool_result' ? 'italic' : undefined,
+                    }}
+                  >
+                    {trace.content}
+                  </span>
+                </div>
+              );
+            })}
+            {/* Active investigation cursor */}
+            {isActive && (
+              <div className="flex gap-2 py-0.5 px-1">
+                <span className="text-gray-700 flex-shrink-0 w-14 text-[10px]" />
+                <span className="flex-shrink-0 w-20" />
+                <span className="text-emerald-500 cursor-blink" />
               </div>
-            ))}
+            )}
           </div>
 
           {/* Bottom status bar */}

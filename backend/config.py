@@ -24,6 +24,10 @@ class Settings(BaseSettings):
     # Dispute settings
     dispute_probability: float = 0.03  # 3% of transactions get disputed
 
+    # FAISS vector store (local, in-memory — no API keys needed)
+    embedding_model: str = "all-MiniLM-L6-v2"
+    embedding_dimensions: int = 384
+
     # Demo mode
     demo_mode: bool = False
     demo_txn_interval: float = 2.0

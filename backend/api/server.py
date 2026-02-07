@@ -63,6 +63,36 @@ async def run_consumer():
                 txn.risk_score = result.score
                 txn.is_anomaly = result.is_anomaly
 
+                # Similarity-based risk boosting via FAISS
+                # Catches subtle anomalies IsolationForest misses — e.g. a $150
+                # purchase at an unusual merchant type for this specific account
+                from backend.vector_store.faiss_store import vector_store
+                if vector_store.enabled and not txn.is_anomaly:
+                    try:
+                        novelty = vector_store.compute_novelty_score(txn_data)
+                        if novelty is not None and novelty > 0.45:
+                            # Blend novelty into risk score: high novelty boosts risk
+                            # Scale: 0.45 novelty → +0.08, 0.7 novelty → +0.20, 1.0 → +0.35
+                            boost = (novelty - 0.45) * 0.64
+                            original_score = txn.risk_score
+                            txn.risk_score = min(1.0, txn.risk_score + boost)
+
+                            # Re-check anomaly threshold with boosted score
+                            if txn.risk_score > 0.55:
+                                txn.is_anomaly = True
+                                result.is_anomaly = True
+                                result.score = txn.risk_score
+                                result.risk_factors.append(
+                                    f"Unusual spending pattern for this account "
+                                    f"(novelty: {novelty:.0%}, risk boosted {original_score:.2f} → {txn.risk_score:.2f})"
+                                )
+                                logger.info(
+                                    f"FAISS novelty boost: {txn.account_id[:8]}... "
+                                    f"novelty={novelty:.2f}, risk {original_score:.2f} → {txn.risk_score:.2f}"
+                                )
+                    except Exception as e:
+                        pass  # Novelty scoring is best-effort, never block pipeline
+
             # Update stats
             stats.total_transactions += 1
             stats.total_amount += txn.amount
@@ -74,6 +104,21 @@ async def run_consumer():
             # Store in buffer
             txn_dict = txn.model_dump()
             transaction_buffer.appendleft(txn_dict)
+
+            # Update agent tool data store with this transaction
+            from backend.agent.tools import _account_histories
+            if txn.account_id not in _account_histories:
+                _account_histories[txn.account_id] = []
+            _account_histories[txn.account_id].append(txn_dict)
+            # Keep only last 100 per account to prevent memory bloat
+            if len(_account_histories[txn.account_id]) > 100:
+                _account_histories[txn.account_id] = _account_histories[txn.account_id][-100:]
+
+            # Upsert to vector store (non-blocking, in thread pool)
+            from backend.vector_store.faiss_store import vector_store
+            if vector_store.enabled:
+                loop = asyncio.get_event_loop()
+                loop.run_in_executor(None, vector_store.upsert_transaction, txn_dict)
 
             # Broadcast transaction to all WebSocket clients
             await manager.broadcast("transaction", txn_dict)
@@ -143,6 +188,20 @@ async def run_agent_worker():
                     stats.money_saved += alert.transaction.amount
                 elif verdict.get("action") == "cleared":
                     stats.cleared_count += 1
+
+                # Store investigation verdict in vector memory
+                from backend.vector_store.faiss_store import vector_store
+                if vector_store.enabled:
+                    txn_data = alert.model_dump().get("transaction", {})
+                    loop = asyncio.get_event_loop()
+                    loop.run_in_executor(
+                        None,
+                        vector_store.upsert_investigation,
+                        alert.id,
+                        verdict.get("action", "flagged"),
+                        verdict.get("summary", ""),
+                        txn_data,
+                    )
 
                 stats.investigations_completed += 1
                 await manager.broadcast("stats", stats.model_dump())
@@ -300,6 +359,12 @@ async def lifespan(app: FastAPI):
     anomaly_engine = AnomalyDetectionEngine()
     logger.info("Anomaly detection engine initialized")
 
+    # Initialize FAISS vector store (local, in-memory)
+    from backend.vector_store.faiss_store import vector_store
+    await vector_store.initialize()
+    if vector_store.enabled:
+        logger.info("Vector store (FAISS) initialized")
+
     # Initialize Nessie API if key is configured
     if settings.nessie_api_key and settings.nessie_api_key != "your_key_here":
         try:
@@ -374,12 +439,14 @@ app.add_middleware(
 
 @app.get("/api/health")
 async def health():
+    from backend.vector_store.faiss_store import vector_store
     return {
         "status": "ok",
         "service": "aegis",
         "nessie_connected": nessie_client is not None,
         "anomaly_engine": anomaly_engine is not None,
         "producer_active": producer is not None,
+        "vector_store_enabled": vector_store.enabled,
     }
 
 

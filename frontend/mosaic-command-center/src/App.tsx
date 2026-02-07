@@ -8,14 +8,12 @@ import { RiskChart } from './components/tiles/RiskChart';
 import { AgentConsole } from './components/tiles/AgentConsole';
 import { DisputePanel } from './components/tiles/DisputePanel';
 import { AccountActivity } from './components/tiles/AccountActivity';
-import { Shield, Wifi, WifiOff, Zap, Database, Clock, Gavel, Maximize, Minimize } from 'lucide-react';
+import { Shield, Wifi, WifiOff, Database, Clock, Maximize, Minimize } from 'lucide-react';
 import { API_URL } from './config';
 import './App.css';
 
 function App() {
   const { transactions, alerts, agentTraces, disputes, stats, isConnected } = useWebSocket();
-  const [isInjecting, setIsInjecting] = useState(false);
-  const [selectedScenario, setSelectedScenario] = useState(0);
   const [nessieConnected, setNessieConnected] = useState(false);
   const [currentTime, setCurrentTime] = useState(new Date());
   const [isFullscreen, setIsFullscreen] = useState(false);
@@ -57,33 +55,13 @@ function App() {
     return () => clearInterval(interval);
   }, []);
 
-  const injectFraud = async () => {
-    setIsInjecting(true);
-    try {
-      await fetch(`${API_URL}/api/demo/inject-fraud?scenario=${selectedScenario}`, {
-        method: 'POST',
-      });
-    } catch (e) {
-      console.error('Failed to inject fraud:', e);
-    }
-    setTimeout(() => setIsInjecting(false), 2000);
-  };
-
-  const injectDispute = async () => {
-    try {
-      await fetch(`${API_URL}/api/demo/inject-dispute`, { method: 'POST' });
-    } catch (e) {
-      console.error('Failed to inject dispute:', e);
-    }
-  };
-
   return (
-    <div className={`min-h-screen bg-[#0a0a0f] text-white ${isInjecting ? 'fraud-flash' : ''}`}>
+    <div className="min-h-screen bg-[#0a0a0f] text-white">
       {/* Animated background gradient */}
       <div className="fixed inset-0 bg-gradient-mesh pointer-events-none" />
 
       {/* Header */}
-      <header className="relative z-10 h-16 flex items-center justify-between px-6 border-b border-gray-800/40 bg-gray-950/60 backdrop-blur-2xl">
+      <header className="relative z-10 h-16 flex items-center justify-between px-6 border-b border-gray-800/40 bg-gray-950/60 backdrop-blur-2xl header-glow">
         <div className="flex items-center gap-3">
           <div className="relative">
             <Shield className="text-emerald-400" size={26} />
@@ -106,42 +84,6 @@ function App() {
           <div className="flex items-center gap-1.5 text-gray-400 text-xs font-mono">
             <Clock size={11} />
             {currentTime.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
-          </div>
-
-          {/* Demo Controls */}
-          <div className="flex items-center gap-2">
-            <select
-              value={selectedScenario}
-              onChange={(e) => setSelectedScenario(Number(e.target.value))}
-              className="bg-gray-800/80 text-gray-300 text-xs border border-gray-700/50 rounded-lg px-2 py-1.5 focus:outline-none focus:border-emerald-500/50 transition-colors"
-            >
-              <option value={0}>Impossible Travel</option>
-              <option value={1}>Rapid Fire Fraud</option>
-              <option value={2}>Crypto Cash-Out</option>
-              <option value={3}>Identity Theft</option>
-              <option value={4}>Mule Structuring</option>
-              <option value={5}>Account Takeover</option>
-              <option value={6}>Phantom Merchant</option>
-            </select>
-            <button
-              onClick={injectFraud}
-              disabled={isInjecting}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all duration-300 ${
-                isInjecting
-                  ? 'bg-red-600 text-white animate-pulse shadow-lg shadow-red-500/30'
-                  : 'bg-red-900/40 text-red-400 border border-red-500/30 hover:bg-red-800/50 hover:border-red-400/50 hover:shadow-lg hover:shadow-red-500/10'
-              }`}
-            >
-              <Zap size={12} />
-              {isInjecting ? 'INJECTING...' : 'INJECT FRAUD'}
-            </button>
-            <button
-              onClick={injectDispute}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold bg-emerald-900/40 text-emerald-400 border border-emerald-500/30 hover:bg-emerald-800/50 hover:border-emerald-400/50 hover:shadow-lg hover:shadow-emerald-500/10 transition-all duration-300"
-            >
-              <Gavel size={12} />
-              DISPUTE
-            </button>
           </div>
 
           {/* Status Indicators */}

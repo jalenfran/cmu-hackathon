@@ -110,20 +110,39 @@ export function RiskChart({ transactions }: RiskChartProps) {
                   const { cx, cy, payload } = props;
                   if (payload.isAnomaly) {
                     return (
-                      <circle
-                        key={`dot-${payload.index}`}
-                        cx={cx}
-                        cy={cy}
-                        r={4}
-                        fill="#ef4444"
-                        stroke="#ef4444"
-                        strokeWidth={2}
-                        strokeOpacity={0.5}
-                        filter="url(#glow)"
-                      />
+                      <g key={`dot-${payload.index}`}>
+                        {/* Pulsing ring */}
+                        <circle
+                          cx={cx} cy={cy} r={8}
+                          fill="none"
+                          stroke="#ef4444"
+                          strokeWidth={1.5}
+                          strokeOpacity={0.3}
+                        >
+                          <animate attributeName="r" values="4;12;4" dur="2s" repeatCount="indefinite" />
+                          <animate attributeName="stroke-opacity" values="0.5;0;0.5" dur="2s" repeatCount="indefinite" />
+                        </circle>
+                        {/* Solid dot */}
+                        <circle
+                          cx={cx} cy={cy} r={4}
+                          fill="#ef4444"
+                          stroke="#ef4444"
+                          strokeWidth={2}
+                          strokeOpacity={0.5}
+                          filter="url(#glow)"
+                        />
+                      </g>
                     );
                   }
-                  return <circle key={`dot-${payload.index}`} cx={cx} cy={cy} r={0} />;
+                  // Small emerald dot for normal transactions
+                  return (
+                    <circle
+                      key={`dot-${payload.index}`}
+                      cx={cx} cy={cy} r={1.5}
+                      fill="#10b981"
+                      fillOpacity={0.3}
+                    />
+                  );
                 }}
               />
             </AreaChart>

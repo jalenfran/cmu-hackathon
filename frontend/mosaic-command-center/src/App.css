@@ -61,7 +61,74 @@
 }
 
 .cursor-blink::after {
-  content: '|';
+  content: '▋';
   animation: blink 1s step-end infinite;
   color: #22c55e;
+}
+
+/* === Agent console trace slide-in === */
+@keyframes traceSlideIn {
+  from {
+    opacity: 0;
+    transform: translateX(-8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+/* === Verdict scan-line glow sweep === */
+@keyframes verdictScan {
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
+}
+
+.verdict-scanline {
+  position: relative;
+  overflow: hidden;
+}
+
+.verdict-scanline::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(16, 185, 129, 0.08) 45%,
+    rgba(16, 185, 129, 0.15) 50%,
+    rgba(16, 185, 129, 0.08) 55%,
+    transparent 100%
+  );
+  background-size: 200% 100%;
+  animation: verdictScan 2s ease-in-out 1;
+  pointer-events: none;
+  border-radius: inherit;
+}
+
+/* === Header frosted bottom edge glow === */
+.header-glow::after {
+  content: '';
+  position: absolute;
+  bottom: -1px;
+  left: 10%;
+  right: 10%;
+  height: 1px;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(16, 185, 129, 0.3),
+    rgba(16, 185, 129, 0.15),
+    rgba(16, 185, 129, 0.3),
+    transparent
+  );
+  pointer-events: none;
 }

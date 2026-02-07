@@ -20,6 +20,8 @@ from backend.agent.tools import (
     get_account_risk_profile,
     run_kyc_check,
     recommend_action,
+    find_similar_transactions,
+    find_similar_investigations,
 )
 
 logger = logging.getLogger(__name__)
@@ -31,6 +33,8 @@ TOOL_MAP = {
     "check_travel_feasibility": check_travel_feasibility,
     "get_account_risk_profile": get_account_risk_profile,
     "run_kyc_check": run_kyc_check,
+    "find_similar_transactions": find_similar_transactions,
+    "find_similar_investigations": find_similar_investigations,
     "recommend_action": recommend_action,
 }
 
@@ -46,6 +50,8 @@ Available tools:
 - check_travel_feasibility(lat1, lon1, lat2, lon2, time_gap_minutes) — check if travel is possible
 - get_account_risk_profile(account_id) — get risk stats for an account
 - run_kyc_check(account_id) — identity fraud check for an account
+- find_similar_transactions(account_id) — search vector DB for similar past transactions and fraud patterns
+- find_similar_investigations(account_id) — find similar past investigations and their verdicts
 - recommend_action(action, summary) — FINAL step. action must be BLOCK, FLAG_FOR_REVIEW, or CLEAR
 
 You MUST call recommend_action as your last step. Do NOT skip it."""
@@ -162,7 +168,8 @@ class FraudInvestigatorAgent:
                     raw_input = alert_context.get("account_id", raw_input)
                 elif tool_name == "verify_merchant":
                     raw_input = alert_context.get("merchant_id", raw_input)
-            if tool_name in ("check_account_history", "get_account_risk_profile", "run_kyc_check"):
+            if tool_name in ("check_account_history", "get_account_risk_profile", "run_kyc_check",
+                            "find_similar_transactions", "find_similar_investigations"):
                 return tool_name, {"account_id": raw_input}
             elif tool_name == "verify_merchant":
                 return tool_name, {"merchant_id": raw_input}
@@ -171,7 +178,8 @@ class FraudInvestigatorAgent:
 
         # Last resort for account/merchant tools: infer the ID from alert context
         if alert_context:
-            if tool_name in ("check_account_history", "get_account_risk_profile", "run_kyc_check"):
+            if tool_name in ("check_account_history", "get_account_risk_profile", "run_kyc_check",
+                            "find_similar_transactions", "find_similar_investigations"):
                 return tool_name, {"account_id": alert_context.get("account_id", "unknown")}
             elif tool_name == "verify_merchant":
                 return tool_name, {"merchant_id": alert_context.get("merchant_id", "unknown")}

@@ -173,40 +173,43 @@ export function AccountActivity({ transactions, alerts }: AccountActivityProps) 
                 }`}
                 onClick={() => setExpandedAccountId(isExpanded ? null : acc.id)}
               >
-                {/* Expand chevron */}
-                {isExpanded
-                  ? <ChevronDown size={12} className="text-emerald-500 flex-shrink-0" />
-                  : <ChevronRight size={12} className="text-gray-500 flex-shrink-0" />
-                }
+                {/* Left group: identity + badges */}
+                <div className="flex items-center gap-2 flex-1 min-w-0">
+                  {/* Expand chevron */}
+                  {isExpanded
+                    ? <ChevronDown size={12} className="text-emerald-500 flex-shrink-0" />
+                    : <ChevronRight size={12} className="text-gray-500 flex-shrink-0" />
+                  }
 
-                {/* Risk dot */}
-                <div
-                  className="w-2 h-2 rounded-full flex-shrink-0"
-                  style={{ backgroundColor: getRiskColor(acc.avgRisk) }}
-                />
+                  {/* Risk dot */}
+                  <div
+                    className="w-2 h-2 rounded-full flex-shrink-0"
+                    style={{ backgroundColor: getRiskColor(acc.avgRisk) }}
+                  />
 
-                {/* Account ID */}
-                <div className="flex-1 min-w-0">
-                  <div className="text-gray-300 font-mono truncate">
-                    {acc.id.slice(0, 8)}...{acc.id.slice(-4)}
+                  {/* Account ID */}
+                  <div className="min-w-0">
+                    <div className="text-gray-300 font-mono truncate">
+                      {acc.id.slice(0, 8)}...{acc.id.slice(-4)}
+                    </div>
+                    <div className="text-gray-500">
+                      {acc.txnCount} txns &middot; {acc.lastCity}
+                    </div>
                   </div>
-                  <div className="text-gray-500">
-                    {acc.txnCount} txns &middot; {acc.lastCity}
-                  </div>
+
+                  {/* Anomaly badge — next to account ID */}
+                  {acc.anomalyCount > 0 && (
+                    <span className="text-red-400 bg-red-900/40 px-1.5 py-0.5 rounded text-xs font-bold flex-shrink-0">
+                      {acc.anomalyCount}
+                    </span>
+                  )}
+
+                  {/* KYC badge */}
+                  <KYCBadge accountId={acc.id} />
                 </div>
 
-                {/* KYC badge */}
-                <KYCBadge accountId={acc.id} />
-
-                {/* Anomaly badge */}
-                {acc.anomalyCount > 0 && (
-                  <span className="text-red-400 bg-red-900/40 px-1.5 py-0.5 rounded text-xs font-bold">
-                    {acc.anomalyCount}
-                  </span>
-                )}
-
-                {/* Total spend */}
-                <div className="text-gray-400 text-right flex-shrink-0">
+                {/* Right group: total spend */}
+                <div className="text-gray-400 text-right flex-shrink-0 font-mono">
                   {formatCurrency(acc.totalSpend)}
                 </div>
               </div>

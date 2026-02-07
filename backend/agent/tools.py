@@ -200,6 +200,122 @@ def recommend_action(action: str, summary: str) -> str:
     return f"RECOMMENDATION SUBMITTED: {action.upper()}\nSummary: {summary}"
 
 
+@tool
+def find_similar_transactions(account_id: str) -> str:
+    """Search the vector database for transactions similar to the current alert being investigated.
+    Finds past transactions with similar spending patterns, merchant types, locations, and risk profiles.
+    Use this to identify fraud patterns or establish that this type of transaction is normal for the account."""
+    from backend.vector_store.faiss_store import vector_store
+
+    if not vector_store.enabled:
+        return "Vector search is not available (FAISS not initialized)."
+
+    # Get the most recent transaction for this account (the one under investigation)
+    history = _account_histories.get(account_id, [])
+    if not history:
+        return f"No transaction data available for account {account_id} to search against."
+
+    current_txn = history[-1]  # Most recent = the one being investigated
+
+    # Query for similar anomalous transactions across ALL accounts
+    similar_anomalies = vector_store.query_similar_transactions(
+        query_txn=current_txn,
+        top_k=5,
+        exclude_id=current_txn.get("id"),
+        anomalies_only=True,
+    )
+
+    # Also query for similar normal transactions for context
+    similar_normal = vector_store.query_similar_transactions(
+        query_txn=current_txn,
+        top_k=3,
+        exclude_id=current_txn.get("id"),
+        anomalies_only=False,
+    )
+
+    if not similar_anomalies and not similar_normal:
+        return (
+            f"Vector Search Results for account {account_id}:\n"
+            f"  No similar transactions found in the database yet. "
+            f"(Database may still be building up transaction history.)"
+        )
+
+    lines = [f"Vector Similarity Search Results for account {account_id}:"]
+    lines.append(f"  Query: {vector_store.transaction_to_text(current_txn)}")
+    lines.append("")
+
+    if similar_anomalies:
+        lines.append(f"  SIMILAR FLAGGED TRANSACTIONS ({len(similar_anomalies)} found):")
+        for i, s in enumerate(similar_anomalies, 1):
+            lines.append(
+                f"    {i}. [{s['similarity_score']:.0%} match] "
+                f"${s.get('amount', 0):.2f} at {s.get('merchant_name', 'Unknown')} "
+                f"in {s.get('city', '?')}, {s.get('country', '?')} "
+                f"(risk: {s.get('risk_score', 0):.2f}, account: {s.get('account_id', '?')[:8]}...)"
+            )
+        lines.append("")
+
+    if similar_normal:
+        lines.append(f"  SIMILAR NORMAL TRANSACTIONS ({len(similar_normal)} found):")
+        for i, s in enumerate(similar_normal, 1):
+            lines.append(
+                f"    {i}. [{s['similarity_score']:.0%} match] "
+                f"${s.get('amount', 0):.2f} at {s.get('merchant_name', 'Unknown')} "
+                f"in {s.get('city', '?')}, {s.get('country', '?')} "
+                f"(risk: {s.get('risk_score', 0):.2f})"
+            )
+
+    # Add analysis hints for the agent
+    if similar_anomalies and similar_anomalies[0]["similarity_score"] > 0.85:
+        lines.append(
+            "\n  WARNING: High similarity to past flagged transactions suggests a known fraud pattern."
+        )
+    elif similar_normal and similar_normal[0]["similarity_score"] > 0.9:
+        lines.append(
+            "\n  NOTE: Very similar to normal transactions on record. "
+            "This spending pattern may be legitimate."
+        )
+
+    return "\n".join(lines)
+
+
+@tool
+def find_similar_investigations(account_id: str) -> str:
+    """Search for similar past fraud investigations and their outcomes.
+    Returns verdicts from previous cases that resemble the current alert.
+    Use this to see how similar cases were resolved (BLOCK, FLAG_FOR_REVIEW, or CLEAR)."""
+    from backend.vector_store.faiss_store import vector_store
+
+    if not vector_store.enabled:
+        return "Vector search is not available (FAISS not initialized)."
+
+    history = _account_histories.get(account_id, [])
+    if not history:
+        return f"No transaction data available for account {account_id}."
+
+    current_txn = history[-1]
+    similar = vector_store.query_similar_investigations(current_txn, top_k=3)
+
+    if not similar:
+        return (
+            f"Investigation Memory for account {account_id}:\n"
+            f"  No similar past investigations found. This may be a novel case."
+        )
+
+    lines = [f"Similar Past Investigations ({len(similar)} found):"]
+    for i, inv in enumerate(similar, 1):
+        lines.append(
+            f"  {i}. [{inv['similarity_score']:.0%} match] "
+            f"Alert {inv.get('alert_id', '?')} - "
+            f"${inv.get('amount', 0):.2f} at {inv.get('merchant_name', '?')} - "
+            f"Verdict: {inv.get('verdict', '?')}"
+        )
+        if inv.get("summary"):
+            lines.append(f"     Reason: {inv['summary'][:150]}")
+
+    return "\n".join(lines)
+
+
 def _generate_mock_history(account_id: str) -> list:
     """Generate realistic transaction history for an account"""
     merchants = [

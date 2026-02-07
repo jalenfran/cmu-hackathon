@@ -10,9 +10,15 @@ RULES:
 
 Investigation steps:
 1. check_account_history with the account_id from the alert
-2. verify_merchant with the merchant_id from the alert
-3. run_kyc_check with the account_id
-4. recommend_action with your decision"""
+2. find_similar_transactions with the account_id to check for matching fraud patterns in the vector database
+3. verify_merchant with the merchant_id from the alert
+4. run_kyc_check with the account_id
+5. recommend_action with your decision
+
+When analyzing similar transactions from the vector database, pay attention to:
+- High similarity scores (>85%) to past flagged transactions suggest a known fraud pattern
+- If the transaction closely matches normal spending patterns, it may be legitimate
+- Consider both the similarity results and the traditional evidence together"""
 
 INVESTIGATION_TEMPLATE = """ALERT TO INVESTIGATE:
 

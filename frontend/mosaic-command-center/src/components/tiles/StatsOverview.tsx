@@ -10,16 +10,55 @@ interface StatsOverviewProps {
 function AnimatedNumber({ value, prefix = '' }: { value: string; prefix?: string }) {
   const [displayValue, setDisplayValue] = useState(value);
   const prevRef = useRef(value);
+  const frameRef = useRef<number>(0);
 
   useEffect(() => {
-    if (prevRef.current !== value) {
-      prevRef.current = value;
+    if (prevRef.current === value) return;
+
+    // Extract numeric parts for smooth interpolation
+    const prevNum = parseFloat(prevRef.current.replace(/[^0-9.-]/g, ''));
+    const nextNum = parseFloat(value.replace(/[^0-9.-]/g, ''));
+    prevRef.current = value;
+
+    // If both are valid numbers, animate between them
+    if (!isNaN(prevNum) && !isNaN(nextNum) && prevNum !== nextNum) {
+      const duration = 400; // ms
+      const start = performance.now();
+
+      const step = (now: number) => {
+        const elapsed = now - start;
+        const progress = Math.min(elapsed / duration, 1);
+        // Ease-out cubic
+        const eased = 1 - Math.pow(1 - progress, 3);
+        const current = prevNum + (nextNum - prevNum) * eased;
+
+        // Preserve the original formatting (commas, decimals, $ sign)
+        if (value.includes('$')) {
+          setDisplayValue(new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(current));
+        } else if (value.includes(',')) {
+          setDisplayValue(Math.round(current).toLocaleString());
+        } else {
+          setDisplayValue(Math.round(current).toString());
+        }
+
+        if (progress < 1) {
+          frameRef.current = requestAnimationFrame(step);
+        } else {
+          setDisplayValue(value);
+        }
+      };
+
+      cancelAnimationFrame(frameRef.current);
+      frameRef.current = requestAnimationFrame(step);
+    } else {
       setDisplayValue(value);
     }
+
+    return () => cancelAnimationFrame(frameRef.current);
   }, [value]);
 
   return (
-    <span key={displayValue} className="inline-block animate-count-up">
+    <span className="inline-block tabular-nums">
       {prefix}{displayValue}
     </span>
   );

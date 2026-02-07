@@ -29,7 +29,9 @@
       "Bash(npx tsc:*)",
       "WebFetch(domain:api.reimaginebanking.com)",
       "WebFetch(domain:github.com)",
-      "Bash(python -m backend.main:*)"
+      "Bash(python -m backend.main:*)",
+      "Bash(pip3 install:*)",
+      "Bash(pip uninstall:*)"
     ]
   }
 }
