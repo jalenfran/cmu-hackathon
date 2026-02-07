@@ -26,7 +26,7 @@ export function getRiskColor(score: number): string {
   if (score >= 0.7) return '#ef4444'; // red
   if (score >= 0.4) return '#f59e0b'; // amber
   if (score >= 0.2) return '#eab308'; // yellow
-  return '#22c55e'; // green
+  return '#10b981'; // emerald
 }
 
 export function getRiskLevel(score: number): string {
@@ -38,10 +38,10 @@ export function getRiskLevel(score: number): string {
 
 export function getTraceColor(stepType: string): string {
   switch (stepType) {
-    case 'thinking': return '#22c55e';
-    case 'tool_call': return '#eab308';
-    case 'tool_result': return '#06b6d4';
-    case 'action': return '#a855f7';
+    case 'thinking': return '#34d399';
+    case 'tool_call': return '#10b981';
+    case 'tool_result': return '#6b7280';
+    case 'action': return '#34d399';
     case 'verdict': return '#ffffff';
     default: return '#9ca3af';
   }
@@ -49,11 +49,11 @@ export function getTraceColor(stepType: string): string {
 
 export function getTracePrefix(stepType: string): string {
   switch (stepType) {
-    case 'thinking': return '💭 THOUGHT';
-    case 'tool_call': return '🔧 ACTION';
-    case 'tool_result': return '📊 RESULT';
-    case 'action': return '⚡ DECIDED';
-    case 'verdict': return '🎯 VERDICT';
-    default: return '▸';
+    case 'thinking': return '[THOUGHT]';
+    case 'tool_call': return '[ACTION]';
+    case 'tool_result': return '[RESULT]';
+    case 'action': return '[DECIDE]';
+    case 'verdict': return '[VERDICT]';
+    default: return '>';
   }
 }

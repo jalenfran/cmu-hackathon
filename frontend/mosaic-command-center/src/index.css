@@ -12,17 +12,38 @@ body {
   font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  background: #0a0a0f;
+  background: #050508;
   color: #e5e7eb;
+  overflow: hidden;
 }
 
 code {
   font-family: 'JetBrains Mono', source-code-pro, Menlo, Monaco, Consolas, monospace;
 }
 
-/* Scrollbar styling */
+/* === Animated gradient mesh background === */
+.bg-gradient-mesh {
+  background:
+    radial-gradient(ellipse 80% 50% at 20% 40%, rgba(16, 185, 129, 0.08) 0%, transparent 60%),
+    radial-gradient(ellipse 60% 60% at 80% 20%, rgba(16, 185, 129, 0.05) 0%, transparent 60%),
+    radial-gradient(ellipse 50% 50% at 50% 80%, rgba(5, 150, 105, 0.04) 0%, transparent 60%),
+    radial-gradient(ellipse 70% 40% at 50% 50%, rgba(16, 185, 129, 0.03) 0%, transparent 50%),
+    linear-gradient(180deg, #050508 0%, #0a0a12 50%, #080810 100%);
+  animation: meshShift 30s ease-in-out infinite alternate;
+}
+
+@keyframes meshShift {
+  0% {
+    background-position: 0% 0%, 100% 0%, 50% 100%;
+  }
+  100% {
+    background-position: 100% 100%, 0% 100%, 50% 0%;
+  }
+}
+
+/* === Sleek scrollbars === */
 .scrollbar-thin::-webkit-scrollbar {
-  width: 4px;
+  width: 3px;
 }
 
 .scrollbar-thin::-webkit-scrollbar-track {
@@ -30,19 +51,19 @@ code {
 }
 
 .scrollbar-thin::-webkit-scrollbar-thumb {
-  background: #374151;
-  border-radius: 2px;
+  background: rgba(75, 85, 99, 0.4);
+  border-radius: 3px;
 }
 
 .scrollbar-thin::-webkit-scrollbar-thumb:hover {
-  background: #4b5563;
+  background: rgba(107, 114, 128, 0.6);
 }
 
-/* Custom animations */
+/* === Animations === */
 @keyframes slideIn {
   from {
     opacity: 0;
-    transform: translateY(-10px);
+    transform: translateY(-8px);
   }
   to {
     opacity: 1;
@@ -51,36 +72,93 @@ code {
 }
 
 @keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes fadeUp {
   from {
     opacity: 0;
+    transform: translateY(12px);
   }
   to {
     opacity: 1;
+    transform: translateY(0);
   }
 }
 
 @keyframes pulse-once {
-  0%, 100% {
-    opacity: 1;
-  }
-  50% {
-    opacity: 0.7;
-  }
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.7; }
+}
+
+@keyframes countUp {
+  from { opacity: 0.5; transform: scale(0.95); }
+  to { opacity: 1; transform: scale(1); }
 }
 
 .animate-pulse-once {
   animation: pulse-once 1s ease-in-out 3;
 }
 
-/* React Flow overrides */
-.react-flow__node {
-  font-size: 11px !important;
+.animate-fade-up {
+  animation: fadeUp 0.4s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
-.react-flow__edge-path {
-  stroke-width: 2 !important;
+.animate-count-up {
+  animation: countUp 0.3s ease-out;
 }
 
-.react-flow__background {
-  background-color: transparent !important;
+/* === Stat card glow effects === */
+.stat-glow-emerald { box-shadow: 0 0 20px -5px rgba(16, 185, 129, 0.2); }
+.stat-glow-red { box-shadow: 0 0 20px -5px rgba(239, 68, 68, 0.15); }
+.stat-glow-amber { box-shadow: 0 0 20px -5px rgba(245, 158, 11, 0.15); }
+
+/* === Liquid glass tile effects === */
+
+/* Glass reflection — diagonal light ray across top */
+.glass-tile::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 40%;
+  background: linear-gradient(
+    135deg,
+    rgba(255, 255, 255, 0.06) 0%,
+    rgba(255, 255, 255, 0.02) 40%,
+    transparent 100%
+  );
+  border-radius: inherit;
+  pointer-events: none;
+  z-index: 1;
+}
+
+/* Noise texture overlay for physical depth */
+.glass-tile::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  opacity: 0.03;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)'/%3E%3C/svg%3E");
+  pointer-events: none;
+  z-index: 1;
+}
+
+/* Animated border glow — subtle emerald pulse */
+@keyframes borderGlow {
+  0%, 100% {
+    border-color: rgba(107, 114, 128, 0.2);
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+  }
+  50% {
+    border-color: rgba(16, 185, 129, 0.15);
+    box-shadow: 0 8px 32px rgba(16, 185, 129, 0.06);
+  }
+}
+
+.glass-tile {
+  animation: borderGlow 6s ease-in-out infinite;
 }

@@ -15,7 +15,21 @@
       "Bash(docker:*)",
       "Bash(open:*)",
       "Bash(python -c:*)",
-      "Bash(curl:*)"
+      "Bash(curl:*)",
+      "Bash(ollama list:*)",
+      "Bash(pgrep:*)",
+      "Bash(ollama pull:*)",
+      "Bash(test:*)",
+      "WebFetch(domain:api.nessieisreal.com)",
+      "Bash(lsof:*)",
+      "Bash(kill:*)",
+      "Bash(xargs kill:*)",
+      "Bash(find:*)",
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "Bash(npx tsc:*)",
+      "WebFetch(domain:api.reimaginebanking.com)",
+      "WebFetch(domain:github.com)",
+      "Bash(python -m backend.main:*)"
     ]
   }
 }

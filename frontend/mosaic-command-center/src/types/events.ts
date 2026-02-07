@@ -20,7 +20,7 @@ export interface AlertEvent {
   transaction: TransactionEvent;
   risk_score: number;
   risk_factors: string[];
-  status: 'pending' | 'investigating' | 'blocked' | 'cleared';
+  status: 'pending' | 'investigating' | 'blocked' | 'cleared' | 'flagged';
   agent_verdict: string | null;
   timestamp: string;
 }
@@ -32,6 +32,21 @@ export interface AgentTrace {
   timestamp: string;
 }
 
+export interface DisputeEvent {
+  id: string;
+  transaction_id: string;
+  account_id: string;
+  amount: number;
+  merchant_name: string;
+  reason: 'unauthorized_charge' | 'wrong_amount' | 'never_received' | 'duplicate' | 'fraud_claim';
+  customer_statement: string;
+  status: 'pending' | 'investigating' | 'approved' | 'denied' | 'escalated';
+  agent_resolution: string | null;
+  resolution_summary: string | null;
+  timestamp: string;
+  resolved_at: string | null;
+}
+
 export interface DashboardStats {
   total_transactions: number;
   flagged_count: number;
@@ -39,9 +54,20 @@ export interface DashboardStats {
   cleared_count: number;
   avg_risk_score: number;
   total_amount: number;
+  money_saved: number;
+  investigations_completed: number;
+  disputes_filed: number;
+  disputes_approved: number;
+  disputes_denied: number;
 }
 
-export interface WebSocketMessage {
-  type: 'transaction' | 'alert' | 'agent_trace' | 'stats';
-  data: any;
+export interface KYCResult {
+  account_id: string;
+  customer_id: string | null;
+  risk_level: 'low' | 'medium' | 'high' | 'critical';
+  risk_score: number;
+  flags: string[];
+  address_match: boolean;
+  account_age_days: number;
+  assessed_at: string;
 }

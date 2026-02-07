@@ -7,7 +7,7 @@ interface BentoGridProps {
 export function BentoGrid({ children }: BentoGridProps) {
   return (
     <div
-      className="grid gap-4 p-4 h-[calc(100vh-4rem)]"
+      className="relative z-10 grid gap-3 p-3 h-[calc(100vh-4rem)]"
       style={{
         gridTemplateColumns: 'repeat(4, 1fr)',
         gridTemplateRows: '80px 1fr 1fr',

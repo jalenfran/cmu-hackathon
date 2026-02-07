@@ -28,14 +28,14 @@ export function TopologyMap({ isActive }: TopologyMapProps) {
   const nodes: Node[] = useMemo(() => [
     {
       id: 'nessie',
-      data: { label: '🏦 Nessie API' },
+      data: { label: 'Nessie API' },
       position: { x: 0, y: 100 },
       style: nodeStyle('#22c55e', isActive),
       sourcePosition: Position.Right,
     },
     {
       id: 'redpanda',
-      data: { label: '🐼 Redpanda' },
+      data: { label: 'Redpanda' },
       position: { x: 180, y: 100 },
       style: nodeStyle('#ef4444', isActive),
       sourcePosition: Position.Right,
@@ -43,7 +43,7 @@ export function TopologyMap({ isActive }: TopologyMapProps) {
     },
     {
       id: 'anomaly',
-      data: { label: '🔍 Anomaly Engine' },
+      data: { label: 'Anomaly Engine' },
       position: { x: 360, y: 50 },
       style: nodeStyle('#f59e0b', isActive),
       sourcePosition: Position.Right,
@@ -51,7 +51,7 @@ export function TopologyMap({ isActive }: TopologyMapProps) {
     },
     {
       id: 'agent',
-      data: { label: '🤖 AI Agent' },
+      data: { label: 'AI Agent' },
       position: { x: 360, y: 160 },
       style: nodeStyle('#06b6d4', isActive),
       sourcePosition: Position.Right,
@@ -59,7 +59,7 @@ export function TopologyMap({ isActive }: TopologyMapProps) {
     },
     {
       id: 'dashboard',
-      data: { label: '📊 Dashboard' },
+      data: { label: 'Dashboard' },
       position: { x: 540, y: 100 },
       style: nodeStyle('#a855f7', isActive),
       targetPosition: Position.Left,
@@ -75,7 +75,7 @@ export function TopologyMap({ isActive }: TopologyMapProps) {
   ], [isActive]);
 
   return (
-    <Tile title="System Topology" icon="🗺️" accentColor="#a855f7">
+    <Tile title="System Topology" accentColor="#a855f7">
       <div className="h-full w-full" style={{ minHeight: '200px' }}>
         <ReactFlow
           nodes={nodes}

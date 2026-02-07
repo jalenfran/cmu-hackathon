@@ -18,8 +18,11 @@ class Settings(BaseSettings):
     anomaly_threshold: float = -0.3  # IsolationForest decision function threshold
 
     # Agent settings
-    ollama_model: str = "llama3:8b"
+    ollama_model: str = "llama3.2:3b"  # Smaller/faster; set OLLAMA_MODEL=llama3:8b for higher quality
     max_concurrent_investigations: int = 1
+
+    # Dispute settings
+    dispute_probability: float = 0.03  # 3% of transactions get disputed
 
     # Demo mode
     demo_mode: bool = False

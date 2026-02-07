@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { useWebSocket } from './hooks/useWebSocket';
 import { BentoGrid } from './components/layout/BentoGrid';
 import { StatsOverview } from './components/tiles/StatsOverview';
@@ -6,42 +6,180 @@ import { TransactionFeed } from './components/tiles/TransactionFeed';
 import { AlertPanel } from './components/tiles/AlertPanel';
 import { RiskChart } from './components/tiles/RiskChart';
 import { AgentConsole } from './components/tiles/AgentConsole';
-import { TopologyMap } from './components/tiles/TopologyMap';
-import { GovernanceCard } from './components/tiles/GovernanceCard';
-import { Shield, Wifi, WifiOff } from 'lucide-react';
+import { DisputePanel } from './components/tiles/DisputePanel';
+import { AccountActivity } from './components/tiles/AccountActivity';
+import { Shield, Wifi, WifiOff, Zap, Database, Clock, Gavel, Maximize, Minimize } from 'lucide-react';
+import { API_URL } from './config';
 import './App.css';
 
 function App() {
-  const { transactions, alerts, agentTraces, stats, isConnected } = useWebSocket();
+  const { transactions, alerts, agentTraces, disputes, stats, isConnected } = useWebSocket();
+  const [isInjecting, setIsInjecting] = useState(false);
+  const [selectedScenario, setSelectedScenario] = useState(0);
+  const [nessieConnected, setNessieConnected] = useState(false);
+  const [currentTime, setCurrentTime] = useState(new Date());
+  const [isFullscreen, setIsFullscreen] = useState(false);
+
+  // Sync fullscreen state with browser
+  useEffect(() => {
+    const handler = () => setIsFullscreen(!!document.fullscreenElement);
+    document.addEventListener('fullscreenchange', handler);
+    return () => document.removeEventListener('fullscreenchange', handler);
+  }, []);
+
+  const toggleFullscreen = () => {
+    if (!document.fullscreenElement) {
+      document.documentElement.requestFullscreen();
+    } else {
+      document.exitFullscreen();
+    }
+  };
+
+  // Update clock every second
+  useEffect(() => {
+    const timer = setInterval(() => setCurrentTime(new Date()), 1000);
+    return () => clearInterval(timer);
+  }, []);
+
+  // Check backend health for Nessie status
+  useEffect(() => {
+    const checkHealth = async () => {
+      try {
+        const res = await fetch(`${API_URL}/api/health`);
+        const data = await res.json();
+        setNessieConnected(data.nessie_connected || false);
+      } catch {
+        setNessieConnected(false);
+      }
+    };
+    checkHealth();
+    const interval = setInterval(checkHealth, 30000);
+    return () => clearInterval(interval);
+  }, []);
+
+  const injectFraud = async () => {
+    setIsInjecting(true);
+    try {
+      await fetch(`${API_URL}/api/demo/inject-fraud?scenario=${selectedScenario}`, {
+        method: 'POST',
+      });
+    } catch (e) {
+      console.error('Failed to inject fraud:', e);
+    }
+    setTimeout(() => setIsInjecting(false), 2000);
+  };
+
+  const injectDispute = async () => {
+    try {
+      await fetch(`${API_URL}/api/demo/inject-dispute`, { method: 'POST' });
+    } catch (e) {
+      console.error('Failed to inject dispute:', e);
+    }
+  };
 
   return (
-    <div className="min-h-screen bg-[#0a0a0f] text-white">
+    <div className={`min-h-screen bg-[#0a0a0f] text-white ${isInjecting ? 'fraud-flash' : ''}`}>
+      {/* Animated background gradient */}
+      <div className="fixed inset-0 bg-gradient-mesh pointer-events-none" />
+
       {/* Header */}
-      <header className="h-16 flex items-center justify-between px-6 border-b border-gray-800/50 bg-gray-900/30 backdrop-blur-xl">
+      <header className="relative z-10 h-16 flex items-center justify-between px-6 border-b border-gray-800/40 bg-gray-950/60 backdrop-blur-2xl">
         <div className="flex items-center gap-3">
-          <Shield className="text-emerald-400" size={24} />
+          <div className="relative">
+            <Shield className="text-emerald-400" size={26} />
+            <div className="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 bg-emerald-400 rounded-full animate-pulse" />
+          </div>
           <div>
             <h1 className="text-lg font-bold tracking-tight">
-              <span className="text-emerald-400">SENTINEL</span>{' '}
-              <span className="text-gray-300">MOSAIC</span>
+              <span className="bg-gradient-to-r from-emerald-400 to-emerald-300 bg-clip-text text-transparent">
+                AEGIS
+              </span>
             </h1>
-            <p className="text-[10px] text-gray-500 uppercase tracking-widest -mt-0.5">
-              Autonomous Financial Governance & Fraud Shield
+            <p className="text-[10px] text-gray-500 uppercase tracking-[0.2em] -mt-0.5">
+              Financial Fraud Detection & Governance
             </p>
           </div>
         </div>
 
-        <div className="flex items-center gap-4">
-          <div className="text-xs text-gray-500 font-mono">
-            CMU Hackathon 2026
+        <div className="flex items-center gap-3">
+          {/* Clock */}
+          <div className="flex items-center gap-1.5 text-gray-400 text-xs font-mono">
+            <Clock size={11} />
+            {currentTime.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
           </div>
-          <div className={`flex items-center gap-2 px-3 py-1 rounded-full text-xs ${
-            isConnected
-              ? 'bg-emerald-900/30 text-emerald-400 border border-emerald-500/30'
-              : 'bg-red-900/30 text-red-400 border border-red-500/30'
-          }`}>
-            {isConnected ? <Wifi size={12} /> : <WifiOff size={12} />}
-            {isConnected ? 'LIVE' : 'DISCONNECTED'}
+
+          {/* Demo Controls */}
+          <div className="flex items-center gap-2">
+            <select
+              value={selectedScenario}
+              onChange={(e) => setSelectedScenario(Number(e.target.value))}
+              className="bg-gray-800/80 text-gray-300 text-xs border border-gray-700/50 rounded-lg px-2 py-1.5 focus:outline-none focus:border-emerald-500/50 transition-colors"
+            >
+              <option value={0}>Impossible Travel</option>
+              <option value={1}>Rapid Fire Fraud</option>
+              <option value={2}>Crypto Cash-Out</option>
+              <option value={3}>Identity Theft</option>
+              <option value={4}>Mule Structuring</option>
+              <option value={5}>Account Takeover</option>
+              <option value={6}>Phantom Merchant</option>
+            </select>
+            <button
+              onClick={injectFraud}
+              disabled={isInjecting}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all duration-300 ${
+                isInjecting
+                  ? 'bg-red-600 text-white animate-pulse shadow-lg shadow-red-500/30'
+                  : 'bg-red-900/40 text-red-400 border border-red-500/30 hover:bg-red-800/50 hover:border-red-400/50 hover:shadow-lg hover:shadow-red-500/10'
+              }`}
+            >
+              <Zap size={12} />
+              {isInjecting ? 'INJECTING...' : 'INJECT FRAUD'}
+            </button>
+            <button
+              onClick={injectDispute}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold bg-emerald-900/40 text-emerald-400 border border-emerald-500/30 hover:bg-emerald-800/50 hover:border-emerald-400/50 hover:shadow-lg hover:shadow-emerald-500/10 transition-all duration-300"
+            >
+              <Gavel size={12} />
+              DISPUTE
+            </button>
+          </div>
+
+          {/* Status Indicators */}
+          <div className="flex items-center gap-2">
+            {/* Fullscreen toggle */}
+            <button
+              onClick={toggleFullscreen}
+              className="flex items-center gap-1.5 px-2 py-1 rounded-full text-xs bg-gray-800/50 text-gray-400 border border-gray-700/30 hover:bg-emerald-900/30 hover:text-emerald-400 hover:border-emerald-500/30 transition-all"
+              title={isFullscreen ? 'Exit fullscreen' : 'Enter fullscreen'}
+            >
+              {isFullscreen ? <Minimize size={12} /> : <Maximize size={12} />}
+              {isFullscreen ? 'EXIT' : 'FULLSCREEN'}
+            </button>
+
+            {/* Nessie API status */}
+            <div className={`flex items-center gap-1.5 px-2 py-1 rounded-full text-xs ${
+              nessieConnected
+                ? 'bg-emerald-900/30 text-emerald-400 border border-emerald-500/30'
+                : 'bg-gray-800/50 text-gray-500 border border-gray-700/30'
+            }`}>
+              <Database size={10} />
+              {nessieConnected ? 'NESSIE' : 'MOCK'}
+            </div>
+
+            {/* Connection status */}
+            <div className={`flex items-center gap-2 px-3 py-1 rounded-full text-xs ${
+              isConnected
+                ? 'bg-emerald-900/30 text-emerald-400 border border-emerald-500/30'
+                : 'bg-red-900/30 text-red-400 border border-red-500/30'
+            }`}>
+              {isConnected ? <Wifi size={12} /> : <WifiOff size={12} />}
+              {isConnected ? (
+                <span className="flex items-center gap-1">
+                  <span className="w-1.5 h-1.5 bg-emerald-400 rounded-full animate-pulse" />
+                  LIVE
+                </span>
+              ) : 'DISCONNECTED'}
+            </div>
           </div>
         </div>
       </header>
@@ -51,15 +189,15 @@ function App() {
         {/* Row 1: Stats strip */}
         <StatsOverview stats={stats} />
 
-        {/* Row 2: Transaction feed + Alerts + Risk chart */}
+        {/* Row 2: Transaction feed + Alerts + Disputes */}
         <TransactionFeed transactions={transactions} />
-        <AlertPanel alerts={alerts} />
-        <RiskChart transactions={transactions} />
+        <AlertPanel alerts={alerts} agentTraces={agentTraces} />
+        <DisputePanel disputes={disputes} />
 
-        {/* Row 3: Agent console + Topology + Governance */}
+        {/* Row 3: Agent console + Risk chart + Account Activity */}
         <AgentConsole traces={agentTraces} />
-        <TopologyMap isActive={isConnected && transactions.length > 0} />
-        <GovernanceCard />
+        <RiskChart transactions={transactions} />
+        <AccountActivity transactions={transactions} alerts={alerts} />
       </BentoGrid>
     </div>
   );

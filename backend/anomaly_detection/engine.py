@@ -115,7 +115,7 @@ class AnomalyDetectionEngine:
         if amount > 5000:
             factors.append(f"High-value transaction: ${amount:.2f}")
 
-        if txn.get("category") in ("Unknown", "Financial", "Luxury"):
+        if txn.get("category") in ("Unknown", "Financial", "Luxury", "Gambling"):
             factors.append(f"High-risk merchant category: {txn.get('category')}")
 
         if not factors:
@@ -136,16 +136,34 @@ class AnomalyDetectionEngine:
         # Map to 0-1 where 1 = most anomalous
         normalized_score = max(0.0, min(1.0, -raw_score * 2))
 
-        # Rule-based boosting for obvious anomalies
+        # Add stochastic noise for realistic variance in the risk timeline
+        # Normal transactions will scatter 0.02-0.25 instead of flat 0.0-0.05
+        noise = np.random.normal(0, 0.06)
+        normalized_score = max(0.0, min(1.0, normalized_score + noise))
+
+        # Soft rule-based boosting (probabilistic, not hard floors)
         country = txn.get("country", "US")
         amount = txn.get("amount", 0)
-        if country != "US" and amount > 1000:
-            normalized_score = max(normalized_score, 0.75)
-        if amount > 5000:
-            normalized_score = max(normalized_score, 0.65)
-        if country != "US" and amount > 5000:
-            normalized_score = max(normalized_score, 0.85)
+        category = txn.get("category", "")
 
+        # International + high amount: boost with variance
+        if country != "US" and amount > 1000:
+            boost = 0.55 + np.random.uniform(0.05, 0.25)
+            normalized_score = max(normalized_score, boost)
+        elif country != "US":
+            # International but low amount: mild boost
+            boost = 0.25 + np.random.uniform(0, 0.15)
+            normalized_score = max(normalized_score, boost)
+
+        if amount > 5000:
+            boost = 0.50 + np.random.uniform(0.05, 0.30)
+            normalized_score = max(normalized_score, boost)
+
+        # High-risk category adds a smaller stochastic bump
+        if category in ("Unknown", "Financial", "Luxury", "Gambling"):
+            normalized_score = min(1.0, normalized_score + np.random.uniform(0.03, 0.12))
+
+        normalized_score = max(0.0, min(1.0, normalized_score))
         is_anomaly = normalized_score > 0.55
 
         risk_factors = []

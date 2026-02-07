@@ -1,6 +1,14 @@
-"""Fraud Investigation Agent using LangChain + Ollama/Llama3"""
+"""Fraud Investigation Agent using LangChain + Ollama/Llama3
 
+Uses a prompt-based ReAct pattern since llama3:8b doesn't support
+native tool-calling via Ollama's API. The LLM outputs Thought/Action/Action Input
+text which we parse and execute manually.
+"""
+
+import asyncio
 import logging
+import re
+import json
 from datetime import datetime
 from typing import Callable, Awaitable, Optional
 
@@ -10,14 +18,49 @@ from backend.agent.tools import (
     verify_merchant,
     check_travel_feasibility,
     get_account_risk_profile,
+    run_kyc_check,
     recommend_action,
 )
 
 logger = logging.getLogger(__name__)
 
+# Map of tool name -> callable
+TOOL_MAP = {
+    "check_account_history": check_account_history,
+    "verify_merchant": verify_merchant,
+    "check_travel_feasibility": check_travel_feasibility,
+    "get_account_risk_profile": get_account_risk_profile,
+    "run_kyc_check": run_kyc_check,
+    "recommend_action": recommend_action,
+}
+
+TOOL_DESCRIPTIONS = """TOOLS (use EXACTLY this format — one Action per turn, then STOP and wait):
+
+Thought: your reasoning
+Action: tool_name
+Action Input: {"param": "value"}
+
+Available tools:
+- check_account_history(account_id) — get recent transactions for an account
+- verify_merchant(merchant_id) — check merchant legitimacy
+- check_travel_feasibility(lat1, lon1, lat2, lon2, time_gap_minutes) — check if travel is possible
+- get_account_risk_profile(account_id) — get risk stats for an account
+- run_kyc_check(account_id) — identity fraud check for an account
+- recommend_action(action, summary) — FINAL step. action must be BLOCK, FLAG_FOR_REVIEW, or CLEAR
+
+You MUST call recommend_action as your last step. Do NOT skip it."""
+
+REACT_PROMPT = """{system_prompt}
+
+{tool_descriptions}
+
+{investigation_input}
+
+Begin now. Output ONE Thought, then ONE Action. Wait for the Observation."""
+
 
 class FraudInvestigatorAgent:
-    """Autonomous AI agent that investigates fraud alerts"""
+    """Autonomous AI agent that investigates fraud alerts using ReAct prompting"""
 
     def __init__(
         self,
@@ -28,32 +71,22 @@ class FraudInvestigatorAgent:
         self.ollama_base_url = ollama_base_url
         self.model = model
         self.broadcast_fn = broadcast_fn
-        self.tools = [
-            check_account_history,
-            verify_merchant,
-            check_travel_feasibility,
-            get_account_risk_profile,
-            recommend_action,
-        ]
-        self._agent = None
+        self._llm = None
 
-    def _get_agent(self):
-        """Lazy-initialize the LangGraph ReAct agent"""
-        if self._agent is not None:
-            return self._agent
+    def _get_llm(self):
+        """Lazy-initialize the ChatOllama LLM"""
+        if self._llm is not None:
+            return self._llm
 
         from langchain_ollama import ChatOllama
-        from langgraph.prebuilt import create_react_agent
 
-        llm = ChatOllama(
+        self._llm = ChatOllama(
             base_url=self.ollama_base_url,
             model=self.model,
             temperature=0.1,
-            num_predict=1024,
+            num_predict=2048,
         )
-
-        self._agent = create_react_agent(llm, self.tools)
-        return self._agent
+        return self._llm
 
     async def _emit_trace(self, alert_id: str, step_type: str, content: str):
         """Broadcast an agent trace step via WebSocket"""
@@ -65,8 +98,159 @@ class FraudInvestigatorAgent:
                 "timestamp": datetime.utcnow().isoformat(),
             })
 
+    def _parse_action(self, text: str, alert_context: dict = None):
+        """Parse Action and Action Input from LLM output.
+
+        alert_context should contain 'account_id' and 'merchant_id' from the
+        original alert, used to fix placeholder values like '{}' that small
+        models sometimes emit.
+        """
+        action_match = re.search(r'Action:\s*(\w+)', text)
+        if not action_match:
+            return None, None
+
+        tool_name = action_match.group(1).strip()
+
+        # Try JSON format - use greedy match to capture full JSON object
+        input_match = re.search(r'Action Input:\s*({[^}]+})', text)
+        if input_match:
+            try:
+                tool_input = json.loads(input_match.group(1))
+                # Fix placeholder IDs that small models emit
+                tool_input = self._fix_placeholder_ids(tool_input, alert_context)
+                return tool_name, tool_input
+            except json.JSONDecodeError:
+                pass
+
+        # Special handling for check_travel_feasibility - extract numbers
+        if tool_name == "check_travel_feasibility":
+            # Try to find coordinates in the text
+            numbers = re.findall(r'[-+]?\d+\.?\d*', text[text.find('Action Input'):] if 'Action Input' in text else text)
+            if len(numbers) >= 5:
+                lat1, lon1 = float(numbers[0]), float(numbers[1])
+                lat2, lon2 = float(numbers[2]), float(numbers[3])
+                # Fix lat/lon confusion: latitude must be [-90, 90]
+                if abs(lat1) > 90:
+                    lat1, lon1 = lon1, lat1
+                if abs(lat2) > 90:
+                    lat2, lon2 = lon2, lat2
+                return tool_name, {
+                    "lat1": lat1, "lon1": lon1,
+                    "lat2": lat2, "lon2": lon2,
+                    "time_gap_minutes": float(numbers[4]),
+                }
+
+        # Special handling for recommend_action
+        if tool_name == "recommend_action":
+            action_val = "BLOCK"
+            text_upper = text.upper()
+            if "CLEAR" in text_upper:
+                action_val = "CLEAR"
+            elif "FLAG" in text_upper or "REVIEW" in text_upper:
+                action_val = "FLAG_FOR_REVIEW"
+            summary_match = re.search(r'(?:summary|reason|because|conclusion)[:\s]*([^\n]+)', text, re.IGNORECASE)
+            summary = summary_match.group(1).strip().lstrip('="\'').strip() if summary_match else "Based on investigation findings."
+            return tool_name, {"action": action_val, "summary": summary[:300]}
+
+        # Try simpler format: Action Input: value
+        input_match = re.search(r'Action Input:\s*"?([^"\n]+)"?', text)
+        if input_match:
+            raw_input = input_match.group(1).strip()
+            # Fix placeholder values
+            if raw_input in ("{}", "{{}}", "''", '""', "unknown") and alert_context:
+                if tool_name in ("check_account_history", "get_account_risk_profile", "run_kyc_check"):
+                    raw_input = alert_context.get("account_id", raw_input)
+                elif tool_name == "verify_merchant":
+                    raw_input = alert_context.get("merchant_id", raw_input)
+            if tool_name in ("check_account_history", "get_account_risk_profile", "run_kyc_check"):
+                return tool_name, {"account_id": raw_input}
+            elif tool_name == "verify_merchant":
+                return tool_name, {"merchant_id": raw_input}
+            else:
+                return tool_name, {"input": raw_input}
+
+        # Last resort for account/merchant tools: infer the ID from alert context
+        if alert_context:
+            if tool_name in ("check_account_history", "get_account_risk_profile", "run_kyc_check"):
+                return tool_name, {"account_id": alert_context.get("account_id", "unknown")}
+            elif tool_name == "verify_merchant":
+                return tool_name, {"merchant_id": alert_context.get("merchant_id", "unknown")}
+
+        return None, None
+
+    def _fix_placeholder_ids(self, tool_input: dict, alert_context: dict = None) -> dict:
+        """Replace placeholder IDs like '{}' with real values from alert context"""
+        if not alert_context:
+            return tool_input
+        placeholders = ("{}", "{{}}", "", "unknown", "placeholder", "{account_id}", "{merchant_id}")
+        for key in ("account_id",):
+            if key in tool_input and str(tool_input[key]).strip() in placeholders:
+                tool_input[key] = alert_context.get("account_id", tool_input[key])
+        for key in ("merchant_id",):
+            if key in tool_input and str(tool_input[key]).strip() in placeholders:
+                tool_input[key] = alert_context.get("merchant_id", tool_input[key])
+        return tool_input
+
+    def _auto_verdict(self, alert_data: dict, evidence: list) -> str:
+        """Generate a verdict automatically when the LLM fails to call recommend_action"""
+        txn = alert_data.get("transaction", alert_data)
+        risk_score = txn.get("risk_score", 0)
+        risk_factors = alert_data.get("risk_factors", [])
+        amount = txn.get("amount", 0)
+        evidence_text = " ".join(evidence).upper()
+
+        # Determine action based on hard evidence
+        block_signals = [
+            risk_score > 0.7,
+            amount > 5000,
+            "IMPOSSIBLE" in evidence_text,
+            "NOT REGISTERED" in evidence_text,
+            "FRAUD REPORTS" in evidence_text and "0" not in evidence_text.split("FRAUD REPORTS")[1][:5],
+        ]
+        clear_signals = [
+            risk_score < 0.3,
+            "FEASIBLE" in evidence_text,
+            "VERIFIED" in evidence_text and "NOT" not in evidence_text.split("VERIFIED")[0][-10:],
+        ]
+
+        block_count = sum(1 for s in block_signals if s)
+        clear_count = sum(1 for s in clear_signals if s)
+
+        if block_count >= 2:
+            action = "BLOCK"
+            summary = (
+                f"Transaction of ${amount:.2f} blocked. "
+                f"Risk score: {risk_score:.2f}. "
+                f"Factors: {', '.join(risk_factors[:3])}."
+            )
+        elif clear_count >= 2 and block_count == 0:
+            action = "CLEAR"
+            summary = f"Transaction of ${amount:.2f} cleared after investigation. Risk score: {risk_score:.2f}."
+        else:
+            action = "FLAG_FOR_REVIEW"
+            summary = (
+                f"Transaction of ${amount:.2f} flagged for manual review. "
+                f"Risk score: {risk_score:.2f}. Inconclusive evidence."
+            )
+
+        return f"RECOMMENDATION SUBMITTED: {action}\nSummary: {summary}"
+
+    async def _execute_tool(self, tool_name: str, tool_input: dict) -> str:
+        """Execute a tool in a thread pool to avoid blocking the event loop"""
+        tool_fn = TOOL_MAP.get(tool_name)
+        if not tool_fn:
+            return f"Error: Unknown tool '{tool_name}'. Available: {list(TOOL_MAP.keys())}"
+
+        try:
+            loop = asyncio.get_event_loop()
+            result = await loop.run_in_executor(None, tool_fn.invoke, tool_input)
+            return str(result)
+        except Exception as e:
+            logger.error(f"Tool {tool_name} failed: {e}")
+            return f"Error executing {tool_name}: {str(e)}"
+
     async def investigate(self, alert_data: dict) -> dict:
-        """Run a full fraud investigation on an alert"""
+        """Run a full fraud investigation on an alert using ReAct loop"""
         alert_id = alert_data.get("id", "unknown")
         txn = alert_data.get("transaction", alert_data)
 
@@ -76,7 +260,6 @@ class FraudInvestigatorAgent:
         )
         investigation_input = INVESTIGATION_TEMPLATE.format(
             alert_id=alert_id,
-            transaction_id=txn.get("id", "unknown"),
             account_id=txn.get("account_id", "unknown"),
             merchant_name=txn.get("merchant_name", "Unknown"),
             merchant_id=txn.get("merchant_id", "unknown"),
@@ -87,61 +270,120 @@ class FraudInvestigatorAgent:
             latitude=txn.get("latitude", 0),
             longitude=txn.get("longitude", 0),
             category=txn.get("category", "Unknown"),
-            timestamp=txn.get("timestamp", ""),
             risk_score=txn.get("risk_score", 0),
             risk_factors=risk_factors_str,
         )
 
+        full_prompt = REACT_PROMPT.format(
+            system_prompt=SYSTEM_PROMPT,
+            tool_descriptions=TOOL_DESCRIPTIONS,
+            investigation_input=investigation_input,
+        )
+
+        # Context dict for fixing placeholder IDs in tool calls
+        alert_context = {
+            "account_id": txn.get("account_id", "unknown"),
+            "merchant_id": txn.get("merchant_id", "unknown"),
+        }
+
         try:
-            agent = self._get_agent()
+            llm = self._get_llm()
 
-            messages = [
-                {"role": "system", "content": SYSTEM_PROMPT},
-                {"role": "user", "content": investigation_input},
-            ]
+            # ReAct loop: Thought -> Action -> Observation -> repeat
+            conversation = full_prompt
+            max_steps = 6
+            final_output = ""
+            evidence_gathered = []
+            parse_failures = 0
 
-            # Stream agent execution for real-time Brain Trace
-            output = ""
-            async for event in agent.astream_events(
-                {"messages": messages},
-                version="v2",
-            ):
-                kind = event.get("event", "")
+            await self._emit_trace(alert_id, "thinking", "Starting fraud investigation...")
 
-                if kind == "on_chat_model_start":
-                    await self._emit_trace(alert_id, "thinking", "Analyzing the suspicious transaction...")
+            for step in range(max_steps):
+                response = await llm.ainvoke(conversation)
+                llm_text = response.content if hasattr(response, 'content') else str(response)
 
-                elif kind == "on_chat_model_stream":
-                    chunk = event.get("data", {}).get("chunk")
-                    if chunk and hasattr(chunk, "content") and chunk.content:
-                        output += chunk.content
+                # Extract thought
+                thought_match = re.search(r'Thought:?\s*(.*?)(?=Action:|$)', llm_text, re.DOTALL)
+                if thought_match:
+                    thought = thought_match.group(1).strip()
+                    if thought:
+                        await self._emit_trace(alert_id, "thinking", thought[:300] + ("..." if len(thought) > 300 else ""))
 
-                elif kind == "on_tool_start":
-                    tool_name = event.get("name", "unknown")
-                    tool_input = str(event.get("data", {}).get("input", ""))[:200]
-                    await self._emit_trace(alert_id, "tool_call", f"Calling: {tool_name}({tool_input})")
+                # Try to parse action (with alert context for ID fixup)
+                tool_name, tool_input = self._parse_action(llm_text, alert_context)
 
-                elif kind == "on_tool_end":
-                    tool_output = str(event.get("data", {}).get("output", ""))[:500]
-                    await self._emit_trace(alert_id, "tool_result", tool_output)
+                if tool_name and tool_name in TOOL_MAP:
+                    parse_failures = 0  # reset on success
+                    await self._emit_trace(
+                        alert_id, "tool_call",
+                        f"Calling: {tool_name}({json.dumps(tool_input)[:200]})"
+                    )
 
-                elif kind == "on_chain_end":
-                    # Capture the final output from the last chain end
-                    chain_output = event.get("data", {}).get("output", {})
-                    if isinstance(chain_output, dict) and "messages" in chain_output:
-                        msgs = chain_output["messages"]
-                        if msgs:
-                            last_msg = msgs[-1]
-                            if hasattr(last_msg, "content"):
-                                output = last_msg.content
+                    tool_result = await self._execute_tool(tool_name, tool_input)
+                    await self._emit_trace(alert_id, "tool_result", tool_result[:400] + ("..." if len(tool_result) > 400 else ""))
+
+                    if tool_name == "recommend_action":
+                        final_output = tool_result
+                        break
+
+                    # Track evidence for fallback verdict
+                    evidence_gathered.append(f"[{tool_name}] {tool_result[:200]}")
+
+                    # Truncate tool result in conversation to prevent context bloat
+                    truncated_result = tool_result[:300]
+                    conversation += f"\n{llm_text}\nObservation: {truncated_result}\n\nContinue. Output ONE Thought and ONE Action."
+
+                else:
+                    parse_failures += 1
+                    # If we already have evidence and LLM mentions a verdict keyword, accept it
+                    if evidence_gathered and any(kw in llm_text.upper() for kw in ["BLOCK", "CLEAR", "FLAG", "REVIEW"]):
+                        final_output = llm_text
+                        break
+                    # Give the model one retry with a corrective prompt
+                    if parse_failures >= 2:
+                        break
+                    conversation += (
+                        f"\n{llm_text}\n\n"
+                        "You did not output a valid Action. Use EXACTLY this format:\n"
+                        "Thought: your reasoning\n"
+                        "Action: tool_name\n"
+                        'Action Input: {"param": "value"}\n\n'
+                        "Try again."
+                    )
+
+            # If the LLM never called recommend_action, nudge it once
+            if not final_output and evidence_gathered:
+                nudge = (
+                    "\n\nYou have gathered enough evidence. Now you MUST call the recommend_action tool. "
+                    "Output exactly:\n"
+                    "Action: recommend_action\n"
+                    'Action Input: {"action": "BLOCK", "summary": "your summary here"}\n\n'
+                    "Choose BLOCK, FLAG_FOR_REVIEW, or CLEAR based on your findings."
+                )
+                conversation += nudge
+                try:
+                    response = await llm.ainvoke(conversation)
+                    llm_text = response.content if hasattr(response, 'content') else str(response)
+                    tool_name, tool_input = self._parse_action(llm_text, alert_context)
+                    if tool_name == "recommend_action" and tool_input:
+                        tool_result = await self._execute_tool(tool_name, tool_input)
+                        await self._emit_trace(alert_id, "tool_result", tool_result[:400] + ("..." if len(tool_result) > 400 else ""))
+                        final_output = tool_result
+                    else:
+                        final_output = llm_text
+                except Exception as e:
+                    logger.warning(f"Nudge LLM call failed: {e}")
+
+            # Final fallback: auto-generate verdict from evidence
+            if not final_output:
+                final_output = self._auto_verdict(alert_data, evidence_gathered)
 
             # Emit final verdict
-            if output:
-                await self._emit_trace(alert_id, "verdict", output[:500])
+            await self._emit_trace(alert_id, "verdict", final_output[:500] + ("..." if len(final_output) > 500 else ""))
 
-            # Parse action from agent output
+            # Parse action from output
             action = "flagged"
-            output_upper = output.upper()
+            output_upper = final_output.upper()
             if "BLOCK" in output_upper:
                 action = "blocked"
             elif "CLEAR" in output_upper:
@@ -152,9 +394,10 @@ class FraudInvestigatorAgent:
             return {
                 "alert_id": alert_id,
                 "action": action,
-                "summary": output[:500],
-                "raw_output": output,
+                "summary": final_output[:500] + ("..." if len(final_output) > 500 else ""),
+                "raw_output": final_output,
             }
+
         except Exception as e:
             logger.error(f"Investigation failed for {alert_id}: {e}")
             await self._emit_trace(

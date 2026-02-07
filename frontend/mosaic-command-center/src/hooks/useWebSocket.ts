@@ -1,15 +1,16 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { TransactionEvent, AlertEvent, AgentTrace, DashboardStats } from '../types/events';
-
-const WS_URL = process.env.REACT_APP_WS_URL || 'ws://localhost:8000/ws/feed';
+import { TransactionEvent, AlertEvent, AgentTrace, DashboardStats, DisputeEvent } from '../types/events';
+import { WS_URL } from '../config';
 const MAX_TRANSACTIONS = 200;
 const MAX_ALERTS = 50;
 const MAX_TRACES = 100;
+const MAX_DISPUTES = 50;
 
 export function useWebSocket() {
   const [transactions, setTransactions] = useState<TransactionEvent[]>([]);
   const [alerts, setAlerts] = useState<AlertEvent[]>([]);
   const [agentTraces, setAgentTraces] = useState<AgentTrace[]>([]);
+  const [disputes, setDisputes] = useState<DisputeEvent[]>([]);
   const [stats, setStats] = useState<DashboardStats>({
     total_transactions: 0,
     flagged_count: 0,
@@ -17,6 +18,11 @@ export function useWebSocket() {
     cleared_count: 0,
     avg_risk_score: 0,
     total_amount: 0,
+    money_saved: 0,
+    investigations_completed: 0,
+    disputes_filed: 0,
+    disputes_approved: 0,
+    disputes_denied: 0,
   });
   const [isConnected, setIsConnected] = useState(false);
   const wsRef = useRef<WebSocket | null>(null);
@@ -24,6 +30,13 @@ export function useWebSocket() {
   const reconnectDelay = useRef(1000);
 
   const connect = useCallback(() => {
+    // Close any existing connection first (handles React StrictMode double-mount)
+    if (wsRef.current) {
+      wsRef.current.onclose = null; // Prevent reconnect loop from old socket
+      wsRef.current.close();
+      wsRef.current = null;
+    }
+
     try {
       const ws = new WebSocket(WS_URL);
       wsRef.current = ws;
@@ -31,6 +44,13 @@ export function useWebSocket() {
       ws.onopen = () => {
         setIsConnected(true);
         reconnectDelay.current = 1000;
+        // Send keepalive pings every 20 seconds
+        const pingInterval = setInterval(() => {
+          if (ws.readyState === WebSocket.OPEN) {
+            ws.send('ping');
+          }
+        }, 20000);
+        ws.addEventListener('close', () => clearInterval(pingInterval));
       };
 
       ws.onmessage = (event) => {
@@ -39,6 +59,18 @@ export function useWebSocket() {
           const { type, data } = message;
 
           switch (type) {
+            case 'backfill':
+              // Initial state snapshot on connect - replace, don't append
+              if (data.transactions) {
+                setTransactions(data.transactions as TransactionEvent[]);
+              }
+              if (data.alerts) {
+                setAlerts(data.alerts as AlertEvent[]);
+              }
+              if (data.disputes) {
+                setDisputes(data.disputes as DisputeEvent[]);
+              }
+              break;
             case 'transaction':
               setTransactions(prev => {
                 const next = [data as TransactionEvent, ...prev];
@@ -56,6 +88,22 @@ export function useWebSocket() {
                 const next = [...prev, data as AgentTrace];
                 return next.slice(-MAX_TRACES);
               });
+              break;
+            case 'alert_update':
+              setAlerts(prev => prev.map(a =>
+                a.id === (data as AlertEvent).id ? (data as AlertEvent) : a
+              ));
+              break;
+            case 'dispute':
+              setDisputes(prev => {
+                const next = [data as DisputeEvent, ...prev];
+                return next.slice(0, MAX_DISPUTES);
+              });
+              break;
+            case 'dispute_update':
+              setDisputes(prev => prev.map(d =>
+                d.id === (data as DisputeEvent).id ? (data as DisputeEvent) : d
+              ));
               break;
             case 'stats':
               setStats(data as DashboardStats);
@@ -92,5 +140,5 @@ export function useWebSocket() {
     };
   }, [connect]);
 
-  return { transactions, alerts, agentTraces, stats, isConnected };
+  return { transactions, alerts, agentTraces, disputes, stats, isConnected };
 }

@@ -10,7 +10,7 @@ logger = logging.getLogger(__name__)
 class TransactionConsumer:
     """Consumes transactions from Kafka topic"""
 
-    def __init__(self, bootstrap_servers: str, topic: str = "transactions", group_id: str = "sentinel-mosaic"):
+    def __init__(self, bootstrap_servers: str, topic: str = "transactions", group_id: str = "aegis"):
         self.bootstrap_servers = bootstrap_servers
         self.topic = topic
         self.group_id = group_id

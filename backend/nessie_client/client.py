@@ -4,10 +4,8 @@ Handles authentication, account data retrieval, and transaction monitoring
 """
 
 import httpx
-import asyncio
 from typing import Optional, Dict, List, Any
 from dataclasses import dataclass
-from datetime import datetime, timedelta
 import logging
 
 logger = logging.getLogger(__name__)
@@ -53,7 +51,7 @@ class NessieClient:
             return [
                 Account(
                     id=acc["_id"],
-                    user_id=acc.get("user_id", ""),
+                    user_id=acc.get("customer_id", acc.get("user_id", "")),
                     account_type=acc.get("type", ""),
                     balance=acc.get("balance", 0)
                 )
@@ -115,6 +113,61 @@ class NessieClient:
             logger.error(f"Error fetching ATM locations: {e}")
             return []
 
+    async def get_customer(self, customer_id: str) -> Optional[Dict[str, Any]]:
+        """Fetch customer profile (name, address) for KYC checks"""
+        try:
+            response = await self.client.get(
+                f"{self.base_url}/customers/{customer_id}",
+                params={"key": self.api_key}
+            )
+            response.raise_for_status()
+            return response.json()
+        except httpx.HTTPError as e:
+            logger.error(f"Error fetching customer {customer_id}: {e}")
+            return None
+
+    async def create_purchase(
+        self,
+        account_id: str,
+        merchant_id: str,
+        amount: float,
+        purchase_date: str,
+        medium: str = "balance",
+        description: str = "",
+    ) -> Optional[Dict[str, Any]]:
+        """Create a purchase for an account. Returns the created purchase object."""
+        try:
+            response = await self.client.post(
+                f"{self.base_url}/accounts/{account_id}/purchases",
+                json={
+                    "merchant_id": merchant_id,
+                    "medium": medium,
+                    "purchase_date": purchase_date,
+                    "amount": amount,
+                    "description": description,
+                },
+                params={"key": self.api_key},
+            )
+            response.raise_for_status()
+            data = response.json()
+            return data.get("objectCreated")
+        except httpx.HTTPError as e:
+            logger.error(f"Error creating purchase for {account_id}: {e}")
+            return None
+
+    async def get_customer_accounts(self, customer_id: str) -> List[Dict[str, Any]]:
+        """Fetch all accounts belonging to a customer"""
+        try:
+            response = await self.client.get(
+                f"{self.base_url}/customers/{customer_id}/accounts",
+                params={"key": self.api_key}
+            )
+            response.raise_for_status()
+            return response.json()
+        except httpx.HTTPError as e:
+            logger.error(f"Error fetching accounts for customer {customer_id}: {e}")
+            return []
+
     async def block_account(self, account_id: str, reason: str) -> bool:
         """Block an account (trigger fraud response)"""
         try:
@@ -133,18 +186,3 @@ class NessieClient:
     async def close(self):
         """Close the client connection"""
         await self.client.aclose()
-
-
-async def test_client():
-    """Quick test of the Nessie client"""
-    # This would use actual API key from environment
-    client = NessieClient(api_key="test_key")
-    try:
-        accounts = await client.get_accounts(limit=5)
-        print(f"Found {len(accounts)} accounts")
-    finally:
-        await client.close()
-
-
-if __name__ == "__main__":
-    asyncio.run(test_client())

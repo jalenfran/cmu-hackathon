@@ -1,4 +1,4 @@
-"""Entry point for Sentinel Mosaic backend"""
+"""Entry point for Aegis backend"""
 
 import uvicorn
 

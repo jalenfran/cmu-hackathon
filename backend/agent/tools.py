@@ -1,15 +1,18 @@
 """LangChain tools for the fraud investigation agent"""
 
 import random
+import logging
 from datetime import datetime, timedelta
 from langchain_core.tools import tool
 
 from backend.anomaly_detection.features import haversine
 
+logger = logging.getLogger(__name__)
 
-# In-memory data store for tool responses (populated by the producer)
+# In-memory data store for tool responses (populated by the producer or Nessie)
 _account_histories = {}
 _merchant_data = {}
+_nessie_client = None
 
 
 def set_account_history(account_id: str, transactions: list):
@@ -20,16 +23,23 @@ def set_merchant_data(merchant_id: str, data: dict):
     _merchant_data[merchant_id] = data
 
 
+def set_nessie_client(client):
+    """Set the Nessie API client for real-time data lookups"""
+    global _nessie_client
+    _nessie_client = client
+
+
 @tool
 def check_account_history(account_id: str) -> str:
     """Check the recent transaction history for a bank account. Returns the last 20 transactions."""
     history = _account_histories.get(account_id, [])
     if not history:
-        # Generate realistic mock history
+        # Generate realistic mock history as fallback
         history = _generate_mock_history(account_id)
 
+    source = "Nessie API" if account_id in _account_histories and _nessie_client else "simulated"
     recent = history[-20:]
-    lines = [f"Recent transactions for account {account_id} ({len(recent)} shown):"]
+    lines = [f"Recent transactions for account {account_id} ({len(recent)} shown, source: {source}):"]
     total = 0.0
     for txn in recent:
         total += txn.get("amount", 0)
@@ -51,7 +61,8 @@ def verify_merchant(merchant_id: str) -> str:
     if not data:
         data = _generate_mock_merchant(merchant_id)
 
-    lines = [f"Merchant Verification Report for {merchant_id}:"]
+    source = "Nessie API" if merchant_id in _merchant_data and _nessie_client else "simulated"
+    lines = [f"Merchant Verification Report for {merchant_id} (source: {source}):"]
     lines.append(f"  Name: {data.get('name', 'Unknown')}")
     lines.append(f"  Category: {data.get('category', 'Unknown')}")
     lines.append(f"  Location: {data.get('city', 'Unknown')}, {data.get('country', 'Unknown')}")
@@ -95,28 +106,86 @@ def check_travel_feasibility(
 @tool
 def get_account_risk_profile(account_id: str) -> str:
     """Get the overall risk profile and statistics for a bank account."""
-    # Generate realistic risk profile
     history = _account_histories.get(account_id, [])
-    num_txns = len(history) if history else random.randint(50, 200)
 
-    profile = {
-        "account_age_months": random.randint(6, 60),
-        "total_transactions": num_txns,
-        "avg_monthly_spend": round(random.uniform(800, 3500), 2),
-        "previous_fraud_alerts": random.randint(0, 2),
-        "international_txn_pct": round(random.uniform(0, 15), 1),
-        "usual_locations": ["Pittsburgh, PA", "Philadelphia, PA"],
-        "risk_tier": random.choice(["Low", "Low", "Low", "Medium", "Medium"]),
-    }
+    if history:
+        # Calculate real stats from actual transaction history
+        amounts = [t.get("amount", 0) for t in history]
+        countries = [t.get("country", "US") for t in history]
+        international_count = sum(1 for c in countries if c != "US")
+        international_pct = round(international_count / max(len(countries), 1) * 100, 1)
 
-    lines = [f"Risk Profile for {account_id}:"]
-    lines.append(f"  Account age: {profile['account_age_months']} months")
+        # Gather unique locations
+        locations = list(set(
+            f"{t.get('city', 'Unknown')}, {t.get('country', 'US')}"
+            for t in history[-20:]
+        ))
+
+        # Count previous anomalies
+        anomaly_count = sum(
+            1 for t in history
+            if t.get("is_anomaly", False) or t.get("risk_score", 0) > 0.5
+        )
+
+        # Determine risk tier based on data
+        if anomaly_count > 2 or international_pct > 30:
+            risk_tier = "High"
+        elif anomaly_count > 0 or international_pct > 15:
+            risk_tier = "Medium"
+        else:
+            risk_tier = "Low"
+
+        profile = {
+            "total_transactions": len(history),
+            "avg_transaction": round(sum(amounts) / max(len(amounts), 1), 2),
+            "max_transaction": round(max(amounts), 2) if amounts else 0,
+            "previous_fraud_alerts": anomaly_count,
+            "international_txn_pct": international_pct,
+            "usual_locations": locations[:5],
+            "risk_tier": risk_tier,
+        }
+        source = "Nessie API" if _nessie_client else "cached data"
+    else:
+        # Fallback to generated profile
+        num_txns = random.randint(50, 200)
+        profile = {
+            "total_transactions": num_txns,
+            "avg_transaction": round(random.uniform(30, 150), 2),
+            "max_transaction": round(random.uniform(200, 800), 2),
+            "previous_fraud_alerts": random.randint(0, 2),
+            "international_txn_pct": round(random.uniform(0, 15), 1),
+            "usual_locations": ["Pittsburgh, PA", "Philadelphia, PA"],
+            "risk_tier": random.choice(["Low", "Low", "Low", "Medium", "Medium"]),
+        }
+        source = "simulated"
+
+    lines = [f"Risk Profile for {account_id} (source: {source}):"]
     lines.append(f"  Total transactions: {profile['total_transactions']}")
-    lines.append(f"  Avg monthly spend: ${profile['avg_monthly_spend']:.2f}")
+    lines.append(f"  Avg transaction: ${profile['avg_transaction']:.2f}")
+    lines.append(f"  Max transaction: ${profile['max_transaction']:.2f}")
     lines.append(f"  Previous fraud alerts: {profile['previous_fraud_alerts']}")
     lines.append(f"  International transactions: {profile['international_txn_pct']}%")
     lines.append(f"  Usual locations: {', '.join(profile['usual_locations'])}")
     lines.append(f"  Risk tier: {profile['risk_tier']}")
+    return "\n".join(lines)
+
+
+@tool
+def run_kyc_check(account_id: str) -> str:
+    """Run a KYC (Know Your Customer) identity fraud risk assessment for a bank account.
+    Returns identity risk level, score, and any fraud flags detected."""
+    from backend.kyc.engine import kyc_engine
+    history = _account_histories.get(account_id, [])
+    result = kyc_engine.assess(account_id, history)
+
+    lines = [f"KYC Identity Risk Assessment for {account_id}:"]
+    lines.append(f"  Risk Level: {result['risk_level'].upper()}")
+    lines.append(f"  Risk Score: {result['risk_score']}/100")
+    lines.append(f"  Address Match: {'Yes' if result['address_match'] else 'NO - MISMATCH'}")
+    lines.append(f"  Customer ID: {result['customer_id'] or 'Unknown'}")
+    lines.append(f"  Flags:")
+    for flag in result["flags"]:
+        lines.append(f"    - {flag}")
     return "\n".join(lines)
 
 
@@ -159,7 +228,7 @@ def _generate_mock_history(account_id: str) -> list:
 
 def _generate_mock_merchant(merchant_id: str) -> dict:
     """Generate mock merchant data"""
-    suspicious_ids = {"m100", "m101", "m102", "m103", "m104", "m105"}
+    suspicious_ids = {"m100", "m101", "m102", "m103", "m104", "m105", "m106", "m107", "m108"}
     if merchant_id in suspicious_ids:
         data = {
             "name": "Unknown/Unverified Merchant",
