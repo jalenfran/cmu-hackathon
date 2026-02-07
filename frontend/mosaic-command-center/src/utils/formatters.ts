@@ -38,22 +38,68 @@ export function getRiskLevel(score: number): string {
 
 export function getTraceColor(stepType: string): string {
   switch (stepType) {
-    case 'thinking': return '#34d399';
-    case 'tool_call': return '#10b981';
-    case 'tool_result': return '#6b7280';
-    case 'action': return '#34d399';
-    case 'verdict': return '#ffffff';
+    case 'thinking': return '#a78bfa';  // purple — AI reasoning
+    case 'tool_call': return '#38bdf8'; // cyan — AI action
+    case 'tool_result': return '#6b7280'; // gray — data
+    case 'action': return '#34d399';    // emerald — decision
+    case 'verdict': return '#fbbf24';   // amber — final verdict
     default: return '#9ca3af';
   }
 }
 
+// Icons are rendered as JSX in AgentConsole.tsx using lucide-react, not here
+// This is kept for backwards compat but no longer used for display
+export function getTraceIcon(stepType: string): string {
+  return '';
+}
+
 export function getTracePrefix(stepType: string): string {
   switch (stepType) {
-    case 'thinking': return '[THOUGHT]';
-    case 'tool_call': return '[ACTION]';
-    case 'tool_result': return '[RESULT]';
-    case 'action': return '[DECIDE]';
-    case 'verdict': return '[VERDICT]';
+    case 'thinking': return 'THOUGHT';
+    case 'tool_call': return 'ACTION';
+    case 'tool_result': return 'RESULT';
+    case 'action': return 'DECIDE';
+    case 'verdict': return 'VERDICT';
     default: return '>';
   }
+}
+
+export function getVerdictColor(action: string): string {
+  if (action.includes('BLOCK')) return '#ef4444';
+  if (action.includes('CLEAR')) return '#10b981';
+  return '#f59e0b'; // FLAG_FOR_REVIEW
+}
+
+export function parseVerdict(content: string): {
+  action: string;
+  reason: string;
+  evidence: string[];
+} | null {
+  // Try structured format: "ACTION - reason. Evidence: item1, item2."
+  const match = content.match(/(BLOCK|CLEAR|FLAG_FOR_REVIEW)\s*[-—]\s*(.*?)(?:Evidence:\s*(.*?))?$/s);
+  if (match) {
+    const evidence = match[3]
+      ? match[3].split(',').map(e => e.trim().replace(/\.$/, '')).filter(Boolean)
+      : [];
+    return {
+      action: match[1],
+      reason: match[2].trim().replace(/\.\s*$/, ''),
+      evidence,
+    };
+  }
+  // Fallback: just detect the action
+  for (const act of ['BLOCK', 'CLEAR', 'FLAG_FOR_REVIEW']) {
+    if (content.toUpperCase().includes(act)) {
+      return { action: act, reason: content.slice(0, 150), evidence: [] };
+    }
+  }
+  return null;
+}
+
+export function parseStepNumber(content: string): { step: number; total: number; text: string } | null {
+  const match = content.match(/^\[(\d+)\/(\d+)\]\s*(.*)/s);
+  if (match) {
+    return { step: parseInt(match[1]), total: parseInt(match[2]), text: match[3] };
+  }
+  return null;
 }

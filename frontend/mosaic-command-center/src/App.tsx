@@ -8,7 +8,8 @@ import { RiskChart } from './components/tiles/RiskChart';
 import { AgentConsole } from './components/tiles/AgentConsole';
 import { DisputePanel } from './components/tiles/DisputePanel';
 import { AccountActivity } from './components/tiles/AccountActivity';
-import { Shield, Wifi, WifiOff, Database, Clock, Maximize, Minimize } from 'lucide-react';
+import { InfraStatus } from './components/tiles/InfraStatus';
+import { Shield, Wifi, WifiOff, Database, Clock, Maximize, Minimize, Server, X } from 'lucide-react';
 import { API_URL } from './config';
 import './App.css';
 
@@ -17,6 +18,8 @@ function App() {
   const [nessieConnected, setNessieConnected] = useState(false);
   const [currentTime, setCurrentTime] = useState(new Date());
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const [showStatus, setShowStatus] = useState(false);
+  const [serviceCount, setServiceCount] = useState({ online: 0, total: 0 });
 
   // Sync fullscreen state with browser
   useEffect(() => {
@@ -39,21 +42,47 @@ function App() {
     return () => clearInterval(timer);
   }, []);
 
-  // Check backend health for Nessie status
+  // Check backend health
   useEffect(() => {
     const checkHealth = async () => {
       try {
         const res = await fetch(`${API_URL}/api/health`);
         const data = await res.json();
         setNessieConnected(data.nessie_connected || false);
+        // Count online services for the status badge
+        const services = [
+          data.nessie_connected,
+          data.anomaly_engine,
+          data.vector_store_enabled,
+          data.neo4j_connected,
+          data.redis_connected,
+          data.metrics_enabled,
+          data.producer_active,
+        ];
+        setServiceCount({
+          online: services.filter(Boolean).length,
+          total: services.length,
+        });
       } catch {
         setNessieConnected(false);
+        setServiceCount({ online: 0, total: 7 });
       }
     };
     checkHealth();
-    const interval = setInterval(checkHealth, 30000);
+    const interval = setInterval(checkHealth, 15000);
     return () => clearInterval(interval);
   }, []);
+
+  // Close modal on Escape key
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setShowStatus(false);
+    };
+    document.addEventListener('keydown', handler);
+    return () => document.removeEventListener('keydown', handler);
+  }, []);
+
+  const allOnline = serviceCount.online === serviceCount.total && serviceCount.total > 0;
 
   return (
     <div className="min-h-screen bg-[#0a0a0f] text-white">
@@ -108,6 +137,20 @@ function App() {
               {nessieConnected ? 'NESSIE' : 'MOCK'}
             </div>
 
+            {/* Infrastructure status button */}
+            <button
+              onClick={() => setShowStatus(true)}
+              className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs border transition-all cursor-pointer ${
+                allOnline
+                  ? 'bg-emerald-900/30 text-emerald-400 border-emerald-500/30 hover:bg-emerald-900/50'
+                  : 'bg-amber-900/30 text-amber-400 border-amber-500/30 hover:bg-amber-900/50'
+              }`}
+            >
+              <Server size={10} />
+              <span className="font-mono">{serviceCount.online}/{serviceCount.total}</span>
+              <span className="hidden sm:inline">STATUS</span>
+            </button>
+
             {/* Connection status */}
             <div className={`flex items-center gap-2 px-3 py-1 rounded-full text-xs ${
               isConnected
@@ -141,6 +184,54 @@ function App() {
         <RiskChart transactions={transactions} />
         <AccountActivity transactions={transactions} alerts={alerts} />
       </BentoGrid>
+
+      {/* Status Modal Overlay */}
+      {showStatus && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-6"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setShowStatus(false);
+          }}
+        >
+          {/* Backdrop */}
+          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
+
+          {/* Modal */}
+          <div className="relative w-full max-w-lg max-h-[80vh] rounded-2xl border border-gray-700/40 overflow-hidden shadow-2xl shadow-black/50"
+            style={{
+              background: 'linear-gradient(135deg, rgba(15, 15, 25, 0.95) 0%, rgba(10, 10, 18, 0.95) 100%)',
+            }}
+          >
+            {/* Modal header */}
+            <div className="flex items-center justify-between px-6 py-4 border-b border-gray-700/30">
+              <div className="flex items-center gap-3">
+                <Server size={18} className="text-emerald-400" />
+                <h2 className="text-sm font-semibold uppercase tracking-[0.15em] text-gray-200">
+                  Infrastructure Status
+                </h2>
+                <span className={`text-[10px] px-2 py-0.5 rounded-full font-mono border ${
+                  allOnline
+                    ? 'bg-emerald-900/30 text-emerald-400 border-emerald-500/30'
+                    : 'bg-amber-900/30 text-amber-400 border-amber-500/30'
+                }`}>
+                  {serviceCount.online}/{serviceCount.total} ONLINE
+                </span>
+              </div>
+              <button
+                onClick={() => setShowStatus(false)}
+                className="p-1.5 rounded-lg text-gray-400 hover:text-white hover:bg-gray-700/40 transition-all"
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            {/* Modal body */}
+            <div className="p-6">
+              <InfraStatus />
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

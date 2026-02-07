@@ -316,6 +316,53 @@ def find_similar_investigations(account_id: str) -> str:
     return "\n".join(lines)
 
 
+@tool
+def detect_fraud_ring(account_id: str) -> str:
+    """Detect potential fraud ring connections by analyzing the graph database.
+    Finds accounts that share suspicious merchant connections with the target account.
+    Use this to identify coordinated fraud across multiple accounts."""
+    from backend.graph.neo4j_client import graph_client
+
+    if not graph_client.enabled:
+        return "Graph database not available. Cannot perform fraud ring analysis."
+
+    result = graph_client.detect_fraud_ring(account_id)
+
+    if not result.get("ring_detected") and not result.get("accounts"):
+        if result.get("reason"):
+            return f"Fraud Ring Analysis for {account_id}:\n  {result['reason']}"
+        return (
+            f"Fraud Ring Analysis for {account_id}:\n"
+            f"  No fraud ring connections detected.\n"
+            f"  This account does not share suspicious merchant patterns with other accounts."
+        )
+
+    lines = [f"Fraud Ring Analysis for {account_id}:"]
+    lines.append(f"  Ring Detected: {'YES' if result['ring_detected'] else 'NO'}")
+    lines.append(f"  Ring Risk Score: {result.get('ring_risk_score', 0):.2f}")
+    lines.append(f"  Connected Accounts: {result.get('connected_accounts', 0)}")
+    lines.append("")
+
+    for acc in result.get("accounts", []):
+        shared = ", ".join(acc["shared_merchants"][:3])
+        if len(acc["shared_merchants"]) > 3:
+            shared += f" (+{len(acc['shared_merchants']) - 3} more)"
+        lines.append(
+            f"  - Account {acc['account_id'][:12]}... | "
+            f"Shared merchants: {shared} | "
+            f"Txns: {acc['transaction_count']} | "
+            f"Anomalies: {acc['anomaly_count']}"
+        )
+
+    if result.get("ring_detected"):
+        lines.append(
+            "\n  WARNING: Accounts sharing multiple merchants with anomalous transactions "
+            "may indicate a coordinated fraud ring."
+        )
+
+    return "\n".join(lines)
+
+
 def _generate_mock_history(account_id: str) -> list:
     """Generate realistic transaction history for an account"""
     merchants = [

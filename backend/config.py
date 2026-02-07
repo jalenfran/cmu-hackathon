@@ -28,6 +28,17 @@ class Settings(BaseSettings):
     embedding_model: str = "all-MiniLM-L6-v2"
     embedding_dimensions: int = 384
 
+    # Neo4j graph database
+    neo4j_uri: str = "bolt://localhost:7687"
+    neo4j_user: str = ""
+    neo4j_password: str = ""
+
+    # Redis cache
+    redis_url: str = "redis://localhost:6379/0"
+
+    # Prometheus metrics
+    metrics_enabled: bool = True
+
     # Demo mode
     demo_mode: bool = False
     demo_txn_interval: float = 2.0

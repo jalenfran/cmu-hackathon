@@ -31,7 +31,15 @@
       "WebFetch(domain:github.com)",
       "Bash(python -m backend.main:*)",
       "Bash(pip3 install:*)",
-      "Bash(pip uninstall:*)"
+      "Bash(pip uninstall:*)",
+      "Bash(DOCKER_HOST=unix:///var/run/docker.sock docker compose:*)",
+      "Bash(for i in {1..90})",
+      "Bash(do)",
+      "Bash(if docker ps:*)",
+      "Bash(then)",
+      "Bash(break)",
+      "Bash(fi)",
+      "Bash(done)"
     ]
   }
 }

@@ -67,6 +67,7 @@ async def run_consumer():
                 # Catches subtle anomalies IsolationForest misses — e.g. a $150
                 # purchase at an unusual merchant type for this specific account
                 from backend.vector_store.faiss_store import vector_store
+                from backend.metrics.prometheus import FAISS_NOVELTY_BOOST_TOTAL
                 if vector_store.enabled and not txn.is_anomaly:
                     try:
                         novelty = vector_store.compute_novelty_score(txn_data)
@@ -86,12 +87,23 @@ async def run_consumer():
                                     f"Unusual spending pattern for this account "
                                     f"(novelty: {novelty:.0%}, risk boosted {original_score:.2f} → {txn.risk_score:.2f})"
                                 )
+                                FAISS_NOVELTY_BOOST_TOTAL.inc()
                                 logger.info(
                                     f"FAISS novelty boost: {txn.account_id[:8]}... "
                                     f"novelty={novelty:.2f}, risk {original_score:.2f} → {txn.risk_score:.2f}"
                                 )
                     except Exception as e:
                         pass  # Novelty scoring is best-effort, never block pipeline
+
+            # Prometheus metrics
+            from backend.metrics.prometheus import (
+                TRANSACTIONS_TOTAL, RISK_SCORE_DISTRIBUTION,
+                FAISS_NOVELTY_BOOST_TOTAL,
+            )
+            TRANSACTIONS_TOTAL.labels(
+                status="anomaly" if txn.is_anomaly else "normal"
+            ).inc()
+            RISK_SCORE_DISTRIBUTION.observe(txn.risk_score)
 
             # Update stats
             stats.total_transactions += 1
@@ -119,6 +131,22 @@ async def run_consumer():
             if vector_store.enabled:
                 loop = asyncio.get_event_loop()
                 loop.run_in_executor(None, vector_store.upsert_transaction, txn_dict)
+
+            # Upsert to Neo4j graph (non-blocking, in thread pool)
+            from backend.graph.neo4j_client import graph_client
+            if graph_client.enabled:
+                loop = asyncio.get_event_loop()
+                loop.run_in_executor(None, graph_client.upsert_transaction, txn_dict)
+
+            # Update Redis velocity and account stats (async, non-blocking)
+            from backend.cache.redis_client import redis_cache
+            if redis_cache.enabled:
+                asyncio.create_task(redis_cache.record_transaction_velocity(
+                    txn.account_id, txn.timestamp, txn.id
+                ))
+                asyncio.create_task(redis_cache.update_account_risk_stats(
+                    txn.account_id, txn_dict
+                ))
 
             # Broadcast transaction to all WebSocket clients
             await manager.broadcast("transaction", txn_dict)
@@ -162,7 +190,11 @@ async def run_consumer():
 async def run_agent_worker():
     """Background task: investigate anomalies with AI agent"""
     try:
+        import time
         from backend.agent.investigator import FraudInvestigatorAgent
+        from backend.metrics.prometheus import (
+            INVESTIGATIONS_TOTAL, INVESTIGATION_DURATION, MONEY_SAVED,
+        )
         agent = FraudInvestigatorAgent(
             ollama_base_url=settings.ollama_base_url,
             model=settings.ollama_model,
@@ -173,7 +205,9 @@ async def run_agent_worker():
             alert = await investigation_queue.get()
             try:
                 logger.info(f"Agent investigating alert: {alert.id}")
+                start_time = time.time()
                 verdict = await agent.investigate(alert.model_dump())
+                INVESTIGATION_DURATION.observe(time.time() - start_time)
 
                 # Update alert with verdict and broadcast
                 for stored_alert in alert_buffer:
@@ -183,10 +217,15 @@ async def run_agent_worker():
                         await manager.broadcast("alert_update", stored_alert)
                         break
 
-                if verdict.get("action") == "blocked":
+                # Prometheus: record investigation verdict
+                verdict_action = verdict.get("action", "flagged")
+                INVESTIGATIONS_TOTAL.labels(verdict=verdict_action).inc()
+
+                if verdict_action == "blocked":
                     stats.blocked_count += 1
                     stats.money_saved += alert.transaction.amount
-                elif verdict.get("action") == "cleared":
+                    MONEY_SAVED.set(stats.money_saved)
+                elif verdict_action == "cleared":
                     stats.cleared_count += 1
 
                 # Store investigation verdict in vector memory
@@ -319,6 +358,10 @@ async def run_dispute_worker():
                         await manager.broadcast("dispute_update", stored)
                         break
 
+                # Prometheus: record dispute outcome
+                from backend.metrics.prometheus import DISPUTES_TOTAL
+                DISPUTES_TOTAL.labels(action=action).inc()
+
                 # Update stats
                 if action == "approved":
                     stats.disputes_approved += 1
@@ -364,6 +407,14 @@ async def lifespan(app: FastAPI):
     await vector_store.initialize()
     if vector_store.enabled:
         logger.info("Vector store (FAISS) initialized")
+
+    # Initialize Neo4j graph database
+    from backend.graph.neo4j_client import graph_client
+    await graph_client.initialize()
+
+    # Initialize Redis cache
+    from backend.cache.redis_client import redis_cache
+    await redis_cache.initialize()
 
     # Initialize Nessie API if key is configured
     if settings.nessie_api_key and settings.nessie_api_key != "your_key_here":
@@ -423,10 +474,19 @@ async def lifespan(app: FastAPI):
         await producer.stop()
     if nessie_client:
         await nessie_client.close()
+    # Close Neo4j and Redis
+    from backend.graph.neo4j_client import graph_client
+    await graph_client.close()
+    from backend.cache.redis_client import redis_cache
+    await redis_cache.close()
     logger.info("Aegis backend stopped")
 
 
 app = FastAPI(title="Aegis API", lifespan=lifespan)
+
+# Mount Prometheus metrics endpoint at /metrics
+from backend.metrics.prometheus import create_metrics_app
+app.mount("/metrics", create_metrics_app())
 
 app.add_middleware(
     CORSMiddleware,
@@ -440,6 +500,8 @@ app.add_middleware(
 @app.get("/api/health")
 async def health():
     from backend.vector_store.faiss_store import vector_store
+    from backend.graph.neo4j_client import graph_client
+    from backend.cache.redis_client import redis_cache
     return {
         "status": "ok",
         "service": "aegis",
@@ -447,6 +509,9 @@ async def health():
         "anomaly_engine": anomaly_engine is not None,
         "producer_active": producer is not None,
         "vector_store_enabled": vector_store.enabled,
+        "neo4j_connected": graph_client.enabled,
+        "redis_connected": redis_cache.enabled,
+        "metrics_enabled": settings.metrics_enabled,
     }
 
 
@@ -511,9 +576,48 @@ async def inject_dispute():
     return {"status": "injected", "dispute": dispute}
 
 
+@app.get("/api/graph/account/{account_id}")
+async def get_account_graph(account_id: str):
+    """Get the graph neighborhood around an account for visualization"""
+    from backend.graph.neo4j_client import graph_client
+    if not graph_client.enabled:
+        return {"nodes": [], "edges": [], "error": "Graph database not available"}
+    loop = asyncio.get_event_loop()
+    result = await loop.run_in_executor(
+        None, graph_client.get_account_neighborhood, account_id
+    )
+    return result
+
+
+@app.get("/api/graph/fraud-ring/{account_id}")
+async def get_fraud_ring(account_id: str):
+    """Detect fraud ring connections for an account"""
+    from backend.graph.neo4j_client import graph_client
+    if not graph_client.enabled:
+        return {"ring_detected": False, "reason": "Graph database not available"}
+    loop = asyncio.get_event_loop()
+    result = await loop.run_in_executor(
+        None, graph_client.detect_fraud_ring, account_id
+    )
+    return result
+
+
+@app.get("/api/cache/velocity/{account_id}")
+async def get_account_velocity(account_id: str):
+    """Get transaction velocity (count in last 10 min) for an account"""
+    from backend.cache.redis_client import redis_cache
+    if not redis_cache.enabled:
+        return {"velocity": 0, "error": "Redis cache not available"}
+    velocity = await redis_cache.get_velocity(account_id)
+    stats_data = await redis_cache.get_account_stats(account_id)
+    return {"velocity": velocity, "stats": stats_data}
+
+
 @app.websocket("/ws/feed")
 async def websocket_feed(websocket: WebSocket):
+    from backend.metrics.prometheus import ACTIVE_WS_CONNECTIONS
     await manager.connect(websocket)
+    ACTIVE_WS_CONNECTIONS.set(len(manager.active_connections))
     try:
         # Send current state snapshot on connect (backfill)
         await websocket.send_json({"type": "stats", "data": stats.model_dump()})
@@ -538,5 +642,7 @@ async def websocket_feed(websocket: WebSocket):
                 await websocket.send_json({"type": "ping", "data": {}})
     except WebSocketDisconnect:
         manager.disconnect(websocket)
+        ACTIVE_WS_CONNECTIONS.set(len(manager.active_connections))
     except Exception:
         manager.disconnect(websocket)
+        ACTIVE_WS_CONNECTIONS.set(len(manager.active_connections))

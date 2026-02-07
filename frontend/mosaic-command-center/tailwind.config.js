@@ -8,7 +8,12 @@ module.exports = {
       colors: {
         sentinel: {
           bg: '#0a0a0f',
-          accent: '#00ff88',
+          surface: '#0f0f19',
+          accent: '#10b981',
+          ai: '#38bdf8',
+          thinking: '#a78bfa',
+          danger: '#ef4444',
+          warning: '#f59e0b',
         }
       }
     },

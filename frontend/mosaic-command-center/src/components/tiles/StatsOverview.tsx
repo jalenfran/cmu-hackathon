@@ -138,8 +138,8 @@ export function StatsOverview({ stats }: StatsOverviewProps) {
         icon={<Gavel size={18} />}
         label="Disputes"
         value={stats.disputes_filed.toString()}
-        color="#10b981"
-        glow="stat-glow-emerald"
+        color="#f59e0b"
+        glow="stat-glow-amber"
       />
       <StatCard
         icon={<DollarSign size={18} />}
@@ -153,8 +153,8 @@ export function StatsOverview({ stats }: StatsOverviewProps) {
         icon={<TrendingUp size={18} />}
         label="Volume"
         value={formatCurrency(stats.total_amount)}
-        color="#10b981"
-        glow="stat-glow-emerald"
+        color="#38bdf8"
+        glow="stat-glow-cyan"
       />
     </div>
   );

@@ -14,8 +14,8 @@ export function Tile({ title, icon, className, children, accentColor, badge }: T
   return (
     <div
       className={clsx(
-        'relative bg-gray-900/30 backdrop-blur-2xl border border-gray-700/20 rounded-2xl p-4 overflow-hidden glass-tile',
-        'hover:border-gray-600/40 transition-all duration-300',
+        'relative bg-gray-900/30 backdrop-blur-2xl border border-gray-700/15 rounded-2xl p-4 overflow-hidden glass-tile',
+        'hover:border-gray-600/30 transition-all duration-300',
         'shadow-lg shadow-black/20',
         className
       )}

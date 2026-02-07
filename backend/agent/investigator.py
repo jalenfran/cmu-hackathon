@@ -22,6 +22,7 @@ from backend.agent.tools import (
     recommend_action,
     find_similar_transactions,
     find_similar_investigations,
+    detect_fraud_ring,
 )
 
 logger = logging.getLogger(__name__)
@@ -35,6 +36,7 @@ TOOL_MAP = {
     "run_kyc_check": run_kyc_check,
     "find_similar_transactions": find_similar_transactions,
     "find_similar_investigations": find_similar_investigations,
+    "detect_fraud_ring": detect_fraud_ring,
     "recommend_action": recommend_action,
 }
 
@@ -42,7 +44,9 @@ TOOL_DESCRIPTIONS = """TOOLS (use EXACTLY this format — one Action per turn, t
 
 Thought: your reasoning
 Action: tool_name
-Action Input: {"param": "value"}
+Action Input: {"parameter_name": "parameter_value"}
+
+IMPORTANT: The JSON keys must be the actual parameter names (account_id, merchant_id, etc.), NOT "param" or "value".
 
 Available tools:
 - check_account_history(account_id) — get recent transactions for an account
@@ -52,6 +56,7 @@ Available tools:
 - run_kyc_check(account_id) — identity fraud check for an account
 - find_similar_transactions(account_id) — search vector DB for similar past transactions and fraud patterns
 - find_similar_investigations(account_id) — find similar past investigations and their verdicts
+- detect_fraud_ring(account_id) — analyze graph database for fraud ring connections
 - recommend_action(action, summary) — FINAL step. action must be BLOCK, FLAG_FOR_REVIEW, or CLEAR
 
 You MUST call recommend_action as your last step. Do NOT skip it."""
@@ -122,6 +127,8 @@ class FraudInvestigatorAgent:
         if input_match:
             try:
                 tool_input = json.loads(input_match.group(1))
+                # Fix {"param": "x", "value": "y"} → {"x": "y"} format
+                tool_input = self._fix_param_value_format(tool_name, tool_input)
                 # Fix placeholder IDs that small models emit
                 tool_input = self._fix_placeholder_ids(tool_input, alert_context)
                 return tool_name, tool_input
@@ -169,7 +176,8 @@ class FraudInvestigatorAgent:
                 elif tool_name == "verify_merchant":
                     raw_input = alert_context.get("merchant_id", raw_input)
             if tool_name in ("check_account_history", "get_account_risk_profile", "run_kyc_check",
-                            "find_similar_transactions", "find_similar_investigations"):
+                            "find_similar_transactions", "find_similar_investigations",
+                            "detect_fraud_ring"):
                 return tool_name, {"account_id": raw_input}
             elif tool_name == "verify_merchant":
                 return tool_name, {"merchant_id": raw_input}
@@ -179,12 +187,22 @@ class FraudInvestigatorAgent:
         # Last resort for account/merchant tools: infer the ID from alert context
         if alert_context:
             if tool_name in ("check_account_history", "get_account_risk_profile", "run_kyc_check",
-                            "find_similar_transactions", "find_similar_investigations"):
+                            "find_similar_transactions", "find_similar_investigations",
+                            "detect_fraud_ring"):
                 return tool_name, {"account_id": alert_context.get("account_id", "unknown")}
             elif tool_name == "verify_merchant":
                 return tool_name, {"merchant_id": alert_context.get("merchant_id", "unknown")}
 
         return None, None
+
+    def _fix_param_value_format(self, tool_name: str, tool_input: dict) -> dict:
+        """Fix LLM outputting {"param": "account_id", "value": "abc"} instead of {"account_id": "abc"}"""
+        if "param" in tool_input and "value" in tool_input and len(tool_input) == 2:
+            # The LLM used the wrong format — reconstruct the correct dict
+            param_name = str(tool_input["param"]).strip()
+            param_value = tool_input["value"]
+            return {param_name: param_value}
+        return tool_input
 
     def _fix_placeholder_ids(self, tool_input: dict, alert_context: dict = None) -> dict:
         """Replace placeholder IDs like '{}' with real values from alert context"""
@@ -227,18 +245,20 @@ class FraudInvestigatorAgent:
         if block_count >= 2:
             action = "BLOCK"
             summary = (
-                f"Transaction of ${amount:.2f} blocked. "
-                f"Risk score: {risk_score:.2f}. "
-                f"Factors: {', '.join(risk_factors[:3])}."
+                f"BLOCK - ${amount:.2f} transaction blocked due to high risk indicators. "
+                f"Evidence: risk score {risk_score:.2f}, {', '.join(risk_factors[:3])}."
             )
         elif clear_count >= 2 and block_count == 0:
             action = "CLEAR"
-            summary = f"Transaction of ${amount:.2f} cleared after investigation. Risk score: {risk_score:.2f}."
+            summary = (
+                f"CLEAR - ${amount:.2f} transaction cleared after investigation. "
+                f"Evidence: risk score {risk_score:.2f}, merchant verified, travel feasible."
+            )
         else:
             action = "FLAG_FOR_REVIEW"
             summary = (
-                f"Transaction of ${amount:.2f} flagged for manual review. "
-                f"Risk score: {risk_score:.2f}. Inconclusive evidence."
+                f"FLAG_FOR_REVIEW - ${amount:.2f} transaction flagged for manual review. "
+                f"Evidence: risk score {risk_score:.2f}, inconclusive findings."
             )
 
         return f"RECOMMENDATION SUBMITTED: {action}\nSummary: {summary}"
@@ -304,9 +324,11 @@ class FraudInvestigatorAgent:
             evidence_gathered = []
             parse_failures = 0
 
-            await self._emit_trace(alert_id, "thinking", "Starting fraud investigation...")
+            await self._emit_trace(alert_id, "thinking", "[1/6] Starting fraud investigation...")
+            step_number = 0
 
             for step in range(max_steps):
+                step_number += 1
                 response = await llm.ainvoke(conversation)
                 llm_text = response.content if hasattr(response, 'content') else str(response)
 
@@ -315,7 +337,7 @@ class FraudInvestigatorAgent:
                 if thought_match:
                     thought = thought_match.group(1).strip()
                     if thought:
-                        await self._emit_trace(alert_id, "thinking", thought[:300] + ("..." if len(thought) > 300 else ""))
+                        await self._emit_trace(alert_id, "thinking", f"[{step_number}/6] {thought[:500]}" + ("..." if len(thought) > 500 else ""))
 
                 # Try to parse action (with alert context for ID fixup)
                 tool_name, tool_input = self._parse_action(llm_text, alert_context)
@@ -324,11 +346,11 @@ class FraudInvestigatorAgent:
                     parse_failures = 0  # reset on success
                     await self._emit_trace(
                         alert_id, "tool_call",
-                        f"Calling: {tool_name}({json.dumps(tool_input)[:200]})"
+                        f"[{step_number}/6] {tool_name}({json.dumps(tool_input)[:300]})"
                     )
 
                     tool_result = await self._execute_tool(tool_name, tool_input)
-                    await self._emit_trace(alert_id, "tool_result", tool_result[:400] + ("..." if len(tool_result) > 400 else ""))
+                    await self._emit_trace(alert_id, "tool_result", tool_result[:600] + ("..." if len(tool_result) > 600 else ""))
 
                     if tool_name == "recommend_action":
                         final_output = tool_result
@@ -338,7 +360,7 @@ class FraudInvestigatorAgent:
                     evidence_gathered.append(f"[{tool_name}] {tool_result[:200]}")
 
                     # Truncate tool result in conversation to prevent context bloat
-                    truncated_result = tool_result[:300]
+                    truncated_result = tool_result[:400]
                     conversation += f"\n{llm_text}\nObservation: {truncated_result}\n\nContinue. Output ONE Thought and ONE Action."
 
                 else:
@@ -355,7 +377,8 @@ class FraudInvestigatorAgent:
                         "You did not output a valid Action. Use EXACTLY this format:\n"
                         "Thought: your reasoning\n"
                         "Action: tool_name\n"
-                        'Action Input: {"param": "value"}\n\n'
+                        'Action Input: {"account_id": "the_id_here"}\n\n'
+                        "The JSON key must be the parameter name like account_id or merchant_id, NOT 'param' or 'value'.\n"
                         "Try again."
                     )
 
@@ -375,7 +398,7 @@ class FraudInvestigatorAgent:
                     tool_name, tool_input = self._parse_action(llm_text, alert_context)
                     if tool_name == "recommend_action" and tool_input:
                         tool_result = await self._execute_tool(tool_name, tool_input)
-                        await self._emit_trace(alert_id, "tool_result", tool_result[:400] + ("..." if len(tool_result) > 400 else ""))
+                        await self._emit_trace(alert_id, "tool_result", tool_result[:600] + ("..." if len(tool_result) > 600 else ""))
                         final_output = tool_result
                     else:
                         final_output = llm_text
@@ -387,7 +410,7 @@ class FraudInvestigatorAgent:
                 final_output = self._auto_verdict(alert_data, evidence_gathered)
 
             # Emit final verdict
-            await self._emit_trace(alert_id, "verdict", final_output[:500] + ("..." if len(final_output) > 500 else ""))
+            await self._emit_trace(alert_id, "verdict", final_output[:800] + ("..." if len(final_output) > 800 else ""))
 
             # Parse action from output
             action = "flagged"
@@ -402,7 +425,7 @@ class FraudInvestigatorAgent:
             return {
                 "alert_id": alert_id,
                 "action": action,
-                "summary": final_output[:500] + ("..." if len(final_output) > 500 else ""),
+                "summary": final_output[:800] + ("..." if len(final_output) > 800 else ""),
                 "raw_output": final_output,
             }
 
