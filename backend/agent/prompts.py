@@ -35,6 +35,7 @@ Action Input: {"action": "BLOCK", "summary": "High risk transaction..."}
 VERDICT FORMAT (for recommend_action):
 Your summary MUST follow: "[ACTION] - [1-sentence reason]. Evidence: [comma-separated key findings]."
 Example: "BLOCK - $4,200 luxury purchase from unverified merchant in unusual location. Evidence: merchant not registered, 12 fraud reports, travel impossible in 15min, 92% similarity to known fraud."
+IMPORTANT: Write all text in plain sentences. Do NOT use markdown formatting (no **, *, #, -, or bullet points).
 
 LOCATION RULES:
 - Transactions within the US (any state: PA, NY, OH, CA, etc.) are DOMESTIC, not international

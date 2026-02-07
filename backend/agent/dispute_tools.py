@@ -114,6 +114,53 @@ def check_customer_dispute_history(account_id: str) -> str:
 
 
 @tool
+def find_duplicate_transactions(transaction_id: str, account_id: str, amount: float, merchant_name: str) -> str:
+    """Search for duplicate charges: same merchant, same amount, same account.
+    Use this when the customer claims a duplicate or double charge."""
+    if not _transaction_buffer:
+        return "Transaction buffer not available. Cannot search for duplicates."
+
+    # Find the disputed transaction
+    disputed_txn = None
+    for t in _transaction_buffer:
+        if t.get("id") == transaction_id:
+            disputed_txn = t
+            break
+
+    # Search for matches: same account + same merchant + same amount (±$0.01)
+    matches = []
+    for t in _transaction_buffer:
+        if t.get("id") == transaction_id:
+            continue  # Skip the disputed transaction itself
+        if (t.get("account_id") == account_id
+                and t.get("merchant_name", "").lower() == merchant_name.lower()
+                and abs(t.get("amount", 0) - amount) < 0.02):
+            matches.append(t)
+
+    lines = [f"Duplicate Transaction Search for {transaction_id}:"]
+    lines.append(f"  Looking for: {merchant_name} | ${amount:.2f} | Account {account_id}")
+
+    if matches:
+        lines.append(f"\n  DUPLICATE FOUND: {len(matches)} matching transaction(s):")
+        for m in matches[:5]:
+            time_str = m.get("timestamp", "Unknown")[:19]
+            lines.append(
+                f"    - ID: {m.get('id', '?')} | ${m.get('amount', 0):.2f} | "
+                f"{m.get('merchant_name', '?')} | {time_str}"
+            )
+        if disputed_txn:
+            lines.append(f"\n  Disputed transaction timestamp: {disputed_txn.get('timestamp', '?')[:19]}")
+            lines.append(f"  Duplicate transaction timestamp:  {matches[0].get('timestamp', '?')[:19]}")
+        lines.append(f"\n  CONCLUSION: This appears to be a genuine duplicate charge.")
+    else:
+        lines.append(f"\n  NO DUPLICATE FOUND in recent transaction history.")
+        lines.append(f"  No other transactions match this merchant + amount for this account.")
+        lines.append(f"  CONCLUSION: No evidence of duplicate charge in available data.")
+
+    return "\n".join(lines)
+
+
+@tool
 def resolve_dispute(action: str, summary: str) -> str:
     """Submit your final resolution for the customer dispute.
     action: must be one of 'APPROVE' (refund customer), 'DENY' (reject dispute), or 'ESCALATE' (needs human review)

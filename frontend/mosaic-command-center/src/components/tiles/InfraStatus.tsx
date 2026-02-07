@@ -5,7 +5,6 @@ import {
   Server,
   GitBranch,
   Zap,
-  BarChart3,
   Database,
   CheckCircle,
   XCircle,
@@ -21,7 +20,6 @@ interface HealthData {
   vector_store_enabled: boolean;
   neo4j_connected: boolean;
   redis_connected: boolean;
-  metrics_enabled: boolean;
 }
 
 function StatusRow({
@@ -111,12 +109,6 @@ export function InfraStatus() {
           label: 'Redis Cache',
           connected: health.redis_connected,
           color: '#dc2626',
-        },
-        {
-          icon: <BarChart3 size={14} />,
-          label: 'Prometheus',
-          connected: health.metrics_enabled,
-          color: '#ea580c',
         },
         {
           icon: <Server size={14} />,

@@ -19,7 +19,6 @@ class Settings(BaseSettings):
 
     # Agent settings
     ollama_model: str = "llama3.2:3b"  # Smaller/faster; set OLLAMA_MODEL=llama3:8b for higher quality
-    max_concurrent_investigations: int = 1
 
     # Dispute settings
     dispute_probability: float = 0.03  # 3% of transactions get disputed
@@ -36,8 +35,9 @@ class Settings(BaseSettings):
     # Redis cache
     redis_url: str = "redis://localhost:6379/0"
 
-    # Prometheus metrics
-    metrics_enabled: bool = True
+    # Webhook (Slack-compatible, leave empty to disable)
+    webhook_url: str = ""          # AI agent BLOCK verdicts → #fraud-alerts
+    webhook_url_human: str = ""    # Human HITL BLOCK decisions → #human-reviews
 
     # Demo mode
     demo_mode: bool = False

@@ -1,6 +1,40 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { TransactionEvent, AlertEvent, AgentTrace, DashboardStats, DisputeEvent } from '../types/events';
 import { WS_URL } from '../config';
+
+function playBlockSound() {
+  try {
+    const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.frequency.value = 440;
+    osc.type = 'square';
+    gain.gain.value = 0.08;
+    osc.start();
+    osc.frequency.setValueAtTime(520, ctx.currentTime + 0.15);
+    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.4);
+    osc.stop(ctx.currentTime + 0.4);
+  } catch {}
+}
+
+function playReviewSound() {
+  try {
+    const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.frequency.value = 880;
+    osc.type = 'sine';
+    gain.gain.value = 0.1;
+    osc.start();
+    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.3);
+    osc.stop(ctx.currentTime + 0.3);
+  } catch {}
+}
+
 const MAX_TRANSACTIONS = 200;
 const MAX_ALERTS = 50;
 const MAX_TRACES = 100;
@@ -89,11 +123,15 @@ export function useWebSocket() {
                 return next.slice(-MAX_TRACES);
               });
               break;
-            case 'alert_update':
+            case 'alert_update': {
+              const updated = data as AlertEvent;
+              if (updated.status === 'blocked') playBlockSound();
+              if (updated.status === 'awaiting_review') playReviewSound();
               setAlerts(prev => prev.map(a =>
-                a.id === (data as AlertEvent).id ? (data as AlertEvent) : a
+                a.id === updated.id ? updated : a
               ));
               break;
+            }
             case 'dispute':
               setDisputes(prev => {
                 const next = [data as DisputeEvent, ...prev];

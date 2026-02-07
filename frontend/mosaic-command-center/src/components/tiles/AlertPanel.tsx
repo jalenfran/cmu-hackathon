@@ -1,16 +1,34 @@
 import React, { useState, useEffect } from 'react';
 import { AlertEvent, AgentTrace, KYCResult } from '../../types/events';
-import { formatCurrency, timeAgo, getRiskColor, getRiskLevel, getTraceColor, getTracePrefix } from '../../utils/formatters';
+import { formatCurrency, timeAgo, getRiskColor, getRiskLevel, getTraceColor, getTracePrefix, stripMarkdown } from '../../utils/formatters';
 import { Tile } from '../layout/Tile';
-import { ChevronDown, ChevronRight, Shield, UserCheck, CheckCircle, XCircle } from 'lucide-react';
+import { ChevronDown, ChevronRight, Shield, UserCheck, CheckCircle, XCircle, Brain } from 'lucide-react';
 import { API_URL } from '../../config';
 
 interface AlertPanelProps {
   alerts: AlertEvent[];
   agentTraces?: AgentTrace[];
+  activeInvestigationIds?: Set<string>;
 }
 
-function StatusBadge({ status, reviewStatus }: { status: string; reviewStatus?: string | null }) {
+function ConfidenceBadge({ score }: { score: number | null }) {
+  if (score == null) return null;
+  const color = score >= 75 ? '#10b981' : score >= 50 ? '#f59e0b' : '#ef4444';
+  return (
+    <span
+      className="text-[10px] px-1.5 py-0.5 rounded-full font-bold font-mono border"
+      style={{
+        color,
+        background: `${color}15`,
+        borderColor: `${color}30`,
+      }}
+    >
+      {score.toFixed(0)}%
+    </span>
+  );
+}
+
+function StatusBadge({ status, reviewStatus, confidence }: { status: string; reviewStatus?: string | null; confidence?: number | null }) {
   const colors: Record<string, string> = {
     pending: 'bg-yellow-900/50 text-yellow-400 border-yellow-500/30',
     investigating: 'bg-emerald-900/50 text-emerald-400 border-emerald-500/30',
@@ -30,6 +48,9 @@ function StatusBadge({ status, reviewStatus }: { status: string; reviewStatus?: 
       <span className={`text-xs px-2 py-0.5 rounded-full border ${colors[status] || colors.pending}`}>
         {label}
       </span>
+      {confidence != null && (status === 'blocked' || status === 'cleared' || status === 'awaiting_review') && (
+        <ConfidenceBadge score={confidence} />
+      )}
       {isHumanResolved && (
         <span className="text-xs px-1.5 py-0.5 rounded-full border bg-blue-900/40 text-blue-400 border-blue-500/30 flex items-center gap-0.5">
           <UserCheck size={9} /> HUMAN
@@ -62,15 +83,32 @@ function HumanReviewPanel({ alert }: { alert: AlertEvent }) {
     setReason('');
   };
 
+  // Parse the agent's recommendation from the verdict
+  const agentRecommendation = alert.agent_verdict
+    ? alert.agent_verdict.includes('BLOCK') ? 'blocked'
+      : alert.agent_verdict.includes('CLEAR') ? 'cleared'
+      : null
+    : null;
+
   return (
     <div className="mt-2 p-3 bg-purple-950/40 border border-purple-500/30 rounded-lg space-y-2.5" onClick={(e) => e.stopPropagation()}>
       <div className="flex items-center gap-1.5 text-purple-300 text-xs font-bold uppercase tracking-wider">
         <UserCheck size={12} />
         Human Decision Required
       </div>
-      <p className="text-xs text-gray-400">
-        The AI agent is unsure. Review the evidence above and decide:
-      </p>
+
+      {/* Show agent's full reasoning prominently */}
+      {alert.agent_verdict && (
+        <div className="p-2.5 bg-gray-900/60 rounded-lg border border-gray-700/30 space-y-1.5">
+          <div className="flex items-center gap-1.5 text-xs text-cyan-400 font-semibold">
+            <Brain size={11} />
+            AI Agent Analysis
+          </div>
+          <p className="text-xs text-gray-300 leading-relaxed">
+            {stripMarkdown(alert.agent_verdict).slice(0, 500)}{alert.agent_verdict.length > 500 ? '...' : ''}
+          </p>
+        </div>
+      )}
 
       <input
         type="text"
@@ -93,6 +131,19 @@ function HumanReviewPanel({ alert }: { alert: AlertEvent }) {
           <XCircle size={13} />
           {submitting ? '...' : 'Block Account'}
         </button>
+        {agentRecommendation && (
+          <button
+            onClick={() => submitDecision(agentRecommendation as 'blocked' | 'cleared')}
+            disabled={submitting}
+            className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-md text-xs font-bold
+              bg-cyan-900/50 text-cyan-400 border border-cyan-500/40
+              hover:bg-cyan-800/60 hover:border-cyan-400/60 transition-all
+              disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            <Brain size={13} />
+            {submitting ? '...' : 'Confirm AI'}
+          </button>
+        )}
         <button
           onClick={() => submitDecision('cleared')}
           disabled={submitting}
@@ -141,8 +192,33 @@ function AlertKYC({ accountId }: { accountId: string }) {
   );
 }
 
-export function AlertPanel({ alerts, agentTraces = [] }: AlertPanelProps) {
+export function AlertPanel({ alerts, agentTraces = [], activeInvestigationIds }: AlertPanelProps) {
   const [expandedId, setExpandedId] = useState<string | null>(null);
+
+  // Auto-expand awaiting_review alerts
+  useEffect(() => {
+    const awaitingReview = alerts.find(a => a.status === 'awaiting_review' && a.review_status !== 'resolved');
+    if (awaitingReview && expandedId !== awaitingReview.id) {
+      setExpandedId(awaitingReview.id);
+    }
+  }, [alerts]);
+
+  // Sort alerts: awaiting_review first, then active investigations, then by recency
+  // Limit to 15 visible alerts to prevent infinite stacking
+  const sortedAlerts = [...alerts].sort((a, b) => {
+    const aAwait = a.status === 'awaiting_review' && a.review_status !== 'resolved';
+    const bAwait = b.status === 'awaiting_review' && b.review_status !== 'resolved';
+    if (aAwait && !bAwait) return -1;
+    if (!aAwait && bAwait) return 1;
+    const aActive = activeInvestigationIds?.has(a.id) ?? false;
+    const bActive = activeInvestigationIds?.has(b.id) ?? false;
+    if (aActive && !bActive) return -1;
+    if (!aActive && bActive) return 1;
+    return 0; // preserve original order (newest first)
+  }).slice(0, 5);
+
+  // Count resolved alerts that are hidden
+  const hiddenCount = alerts.length > 15 ? alerts.length - 15 : 0;
 
   return (
     <Tile title="Anomaly Alerts" accentColor="#10b981">
@@ -153,18 +229,41 @@ export function AlertPanel({ alerts, agentTraces = [] }: AlertPanelProps) {
             Monitoring for anomalies...
           </div>
         )}
-        {alerts.map((alert, i) => {
+        {sortedAlerts.map((alert, i) => {
           const isExpanded = expandedId === alert.id;
           const alertTraces = agentTraces.filter(t => t.alert_id === alert.id);
+          const isBeingInvestigated = activeInvestigationIds?.has(alert.id) ?? false;
+          const isAwaitingReview = alert.status === 'awaiting_review' && alert.review_status !== 'resolved';
+          const isResolved = (alert.status === 'blocked' || alert.status === 'cleared') && !isExpanded;
+
+          // Resolved alerts render as compact one-liners unless expanded
+          if (isResolved) {
+            return (
+              <div
+                key={alert.id}
+                className="flex items-center justify-between gap-2 bg-gray-900/30 border border-gray-700/20 rounded-lg px-3 py-1.5 cursor-pointer hover:border-gray-600/30 transition-all"
+                onClick={() => setExpandedId(alert.id)}
+              >
+                <div className="flex items-center gap-2 min-w-0">
+                  <ChevronRight size={10} className="text-gray-600 flex-shrink-0" />
+                  <span className="text-xs text-gray-400 truncate">{alert.transaction.merchant_name}</span>
+                  <span className="text-xs font-mono text-gray-500">{formatCurrency(alert.transaction.amount)}</span>
+                </div>
+                <StatusBadge status={alert.status} reviewStatus={alert.review_status} confidence={alert.confidence_score} />
+              </div>
+            );
+          }
 
           return (
             <div
               key={alert.id}
               className={`bg-red-950/30 border rounded-lg p-3 space-y-2 cursor-pointer transition-all ${
-                isExpanded ? 'border-red-500/40' : 'border-red-500/20 hover:border-red-500/30'
-              }`}
+                isAwaitingReview
+                  ? 'border-purple-500/40 ring-2 ring-purple-500/20'
+                  : isExpanded ? 'border-red-500/40' : 'border-red-500/20 hover:border-red-500/30'
+              } ${isBeingInvestigated ? 'investigation-focus' : ''}`}
               style={{
-                animation: i === 0 ? 'slideIn 0.3s ease-out' : undefined,
+                animation: i === 0 && !isResolved ? 'alertSlideIn 0.3s ease-out' : undefined,
               }}
               onClick={() => setExpandedId(isExpanded ? null : alert.id)}
             >
@@ -178,7 +277,7 @@ export function AlertPanel({ alerts, agentTraces = [] }: AlertPanelProps) {
                     {alert.transaction.merchant_name}
                   </span>
                 </div>
-                <StatusBadge status={alert.status} reviewStatus={alert.review_status} />
+                <StatusBadge status={alert.status} reviewStatus={alert.review_status} confidence={alert.confidence_score} />
               </div>
 
               <div className="flex items-center justify-between">
@@ -256,10 +355,15 @@ export function AlertPanel({ alerts, agentTraces = [] }: AlertPanelProps) {
                   <AlertKYC accountId={alert.transaction.account_id} />
 
                   {/* Agent verdict */}
-                  {alert.agent_verdict && (
+                  {alert.agent_verdict && alert.status !== 'awaiting_review' && (
                     <div className="text-xs bg-gray-800/50 rounded p-2 text-gray-300 border-l-2 border-emerald-500">
-                      <div className="text-emerald-400 font-semibold mb-1">AI Agent Verdict</div>
-                      {alert.agent_verdict.slice(0, 300)}{alert.agent_verdict.length > 300 ? '...' : ''}
+                      <div className="text-emerald-400 font-semibold mb-1 flex items-center gap-1.5">
+                        AI Agent Verdict
+                        {alert.confidence_score != null && (
+                          <ConfidenceBadge score={alert.confidence_score} />
+                        )}
+                      </div>
+                      {stripMarkdown(alert.agent_verdict).slice(0, 300)}{alert.agent_verdict.length > 300 ? '...' : ''}
                     </div>
                   )}
 
@@ -269,7 +373,7 @@ export function AlertPanel({ alerts, agentTraces = [] }: AlertPanelProps) {
                       <div className="text-xs text-gray-500 font-semibold uppercase tracking-wider">
                         Investigation Trace
                       </div>
-                      <div className="max-h-32 overflow-y-auto space-y-0.5">
+                      <div className="max-h-32 overflow-y-auto space-y-0.5 scrollbar-thin">
                         {alertTraces.map((trace, k) => (
                           <div key={k} className="text-xs flex gap-1">
                             <span
@@ -288,7 +392,7 @@ export function AlertPanel({ alerts, agentTraces = [] }: AlertPanelProps) {
                   )}
 
                   {/* HITL: Human Review Panel - shown when awaiting review */}
-                  {alert.status === 'awaiting_review' && alert.review_status !== 'resolved' && (
+                  {isAwaitingReview && (
                     <HumanReviewPanel alert={alert} />
                   )}
 
@@ -308,12 +412,17 @@ export function AlertPanel({ alerts, agentTraces = [] }: AlertPanelProps) {
               {/* Agent verdict (compact, when not expanded) */}
               {!isExpanded && alert.agent_verdict && (
                 <div className="text-xs bg-gray-800/50 rounded p-2 text-gray-300 border-l-2 border-emerald-500 truncate">
-                  {alert.agent_verdict.slice(0, 100)}{alert.agent_verdict.length > 100 ? '...' : ''}
+                  {stripMarkdown(alert.agent_verdict).slice(0, 100)}{alert.agent_verdict.length > 100 ? '...' : ''}
                 </div>
               )}
             </div>
           );
         })}
+        {hiddenCount > 0 && (
+          <div className="text-center text-[10px] text-gray-600 py-1 font-mono">
+            +{hiddenCount} older alert{hiddenCount !== 1 ? 's' : ''}
+          </div>
+        )}
       </div>
     </Tile>
   );

@@ -33,6 +33,7 @@ class AlertEvent(BaseModel):
     review_status: Optional[str] = None  # awaiting_review, confirmed, overridden
     human_override: Optional[str] = None  # blocked, cleared (the human's chosen action)
     human_reason: Optional[str] = None
+    confidence_score: Optional[float] = None  # 0-100
     timestamp: str
 
 

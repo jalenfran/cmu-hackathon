@@ -32,6 +32,87 @@ dispute_queue: asyncio.Queue = asyncio.Queue()
 producer: TransactionProducer | None = None
 anomaly_engine: AnomalyDetectionEngine | None = None
 nessie_client = None
+_demo_running = False
+
+
+async def _send_block_webhook(
+    alert_data: dict, verdict_summary: str, confidence: float | None,
+):
+    """Fire-and-forget Slack webhook to #fraud-alerts on AI BLOCK"""
+    url = settings.webhook_url
+    if not url:
+        return
+    try:
+        import httpx
+        txn = alert_data.get("transaction", alert_data)
+        conf_str = f" ({confidence:.0f}% confidence)" if confidence else ""
+        payload = {
+            "text": (
+                f":rotating_light: *AEGIS BLOCK*{conf_str}\n"
+                f"*{txn.get('merchant_name', '?')}* — ${txn.get('amount', 0):,.2f}\n"
+                f"Account: `{str(txn.get('account_id', '?'))[:12]}...`\n"
+                f"Location: {txn.get('city', '?')}, {txn.get('country', '?')}\n"
+                f"Risk: {txn.get('risk_score', 0):.0%}\n"
+                f"_{verdict_summary[:200]}_"
+            )
+        }
+        async with httpx.AsyncClient(timeout=5) as client:
+            await client.post(url, json=payload)
+    except Exception as e:
+        logger.warning(f"Webhook failed: {e}")
+
+
+async def _send_review_webhook(alert_data: dict, verdict_summary: str, confidence: float | None):
+    """Send a Slack notification to #human-reviews when an alert needs human review"""
+    url = settings.webhook_url_human or settings.webhook_url
+    if not url:
+        return
+    try:
+        import httpx
+        txn = alert_data.get("transaction", alert_data)
+        alert_id = alert_data.get("id", "?")
+        conf_str = f"{confidence:.0f}%" if confidence else "N/A"
+        payload = {
+            "text": (
+                f":warning: *NEEDS HUMAN REVIEW*\n"
+                f"*{txn.get('merchant_name', '?')}* — ${txn.get('amount', 0):,.2f}\n"
+                f"Account: `{str(txn.get('account_id', '?'))[:12]}...`\n"
+                f"Location: {txn.get('city', '?')}, {txn.get('country', '?')}\n"
+                f"Risk: {txn.get('risk_score', 0):.0%} · Confidence: {conf_str}\n"
+                f"Alert: `{alert_id}`\n"
+                f"_AI Analysis: {verdict_summary[:200]}_\n"
+                f"Review in the AEGIS dashboard to BLOCK or CLEAR."
+            )
+        }
+        async with httpx.AsyncClient(timeout=5) as client:
+            await client.post(url, json=payload)
+    except Exception as e:
+        logger.warning(f"Review webhook failed: {e}")
+
+
+async def _send_resolution_webhook(alert_data: dict, action: str, reason: str):
+    """Send a Slack follow-up to #human-reviews when a reviewed alert is resolved"""
+    url = settings.webhook_url_human or settings.webhook_url
+    if not url:
+        return
+    try:
+        import httpx
+        txn = alert_data.get("transaction", alert_data)
+        alert_id = alert_data.get("id", "?")
+        emoji = ":no_entry:" if action == "blocked" else ":white_check_mark:"
+        verb = "BLOCKED" if action == "blocked" else "CLEARED"
+        payload = {
+            "text": (
+                f"{emoji} *RESOLVED: {verb}*\n"
+                f"*{txn.get('merchant_name', '?')}* — ${txn.get('amount', 0):,.2f}\n"
+                f"Alert: `{alert_id}`\n"
+                f"_{reason[:200]}_"
+            )
+        }
+        async with httpx.AsyncClient(timeout=5) as client:
+            await client.post(url, json=payload)
+    except Exception as e:
+        logger.warning(f"Resolution webhook failed: {e}")
 
 
 async def run_producer(prod: TransactionProducer):
@@ -67,7 +148,6 @@ async def run_consumer():
                 # Catches subtle anomalies IsolationForest misses — e.g. a $150
                 # purchase at an unusual merchant type for this specific account
                 from backend.vector_store.faiss_store import vector_store
-                from backend.metrics.prometheus import FAISS_NOVELTY_BOOST_TOTAL
                 if vector_store.enabled and not txn.is_anomaly:
                     try:
                         novelty = vector_store.compute_novelty_score(txn_data)
@@ -87,23 +167,12 @@ async def run_consumer():
                                     f"Unusual spending pattern for this account "
                                     f"(novelty: {novelty:.0%}, risk boosted {original_score:.2f} → {txn.risk_score:.2f})"
                                 )
-                                FAISS_NOVELTY_BOOST_TOTAL.inc()
                                 logger.info(
                                     f"FAISS novelty boost: {txn.account_id[:8]}... "
                                     f"novelty={novelty:.2f}, risk {original_score:.2f} → {txn.risk_score:.2f}"
                                 )
                     except Exception as e:
                         pass  # Novelty scoring is best-effort, never block pipeline
-
-            # Prometheus metrics
-            from backend.metrics.prometheus import (
-                TRANSACTIONS_TOTAL, RISK_SCORE_DISTRIBUTION,
-                FAISS_NOVELTY_BOOST_TOTAL,
-            )
-            TRANSACTIONS_TOTAL.labels(
-                status="anomaly" if txn.is_anomaly else "normal"
-            ).inc()
-            RISK_SCORE_DISTRIBUTION.observe(txn.risk_score)
 
             # Update stats
             stats.total_transactions += 1
@@ -190,11 +259,7 @@ async def run_consumer():
 async def run_agent_worker():
     """Background task: investigate anomalies with AI agent"""
     try:
-        import time
         from backend.agent.investigator import FraudInvestigatorAgent
-        from backend.metrics.prometheus import (
-            INVESTIGATIONS_TOTAL, INVESTIGATION_DURATION, MONEY_SAVED,
-        )
         agent = FraudInvestigatorAgent(
             ollama_base_url=settings.ollama_base_url,
             model=settings.ollama_model,
@@ -205,15 +270,14 @@ async def run_agent_worker():
             alert = await investigation_queue.get()
             try:
                 logger.info(f"Agent investigating alert: {alert.id}")
-                start_time = time.time()
                 verdict = await agent.investigate(alert.model_dump())
-                INVESTIGATION_DURATION.observe(time.time() - start_time)
 
                 # Update alert with verdict and broadcast
                 verdict_action = verdict.get("action", "flagged")
                 for stored_alert in alert_buffer:
                     if stored_alert["id"] == alert.id:
                         stored_alert["agent_verdict"] = verdict.get("summary", "")
+                        stored_alert["confidence_score"] = verdict.get("confidence")
 
                         # HITL: "flagged" verdicts go to human review instead of
                         # being finalized. "blocked" and "cleared" are high-confidence
@@ -221,21 +285,22 @@ async def run_agent_worker():
                         if verdict_action == "flagged":
                             stored_alert["status"] = "awaiting_review"
                             stored_alert["review_status"] = "awaiting_review"
+                            # Notify #human-reviews that this alert needs attention
+                            asyncio.create_task(_send_review_webhook(
+                                stored_alert, verdict.get("summary", ""), verdict.get("confidence")))
                         else:
                             stored_alert["status"] = verdict_action
 
                         await manager.broadcast("alert_update", stored_alert)
                         break
 
-                # Prometheus: record investigation verdict
-                INVESTIGATIONS_TOTAL.labels(verdict=verdict_action).inc()
-
                 # Only update stats for high-confidence verdicts;
                 # awaiting_review alerts will update stats when a human decides
                 if verdict_action == "blocked":
                     stats.blocked_count += 1
                     stats.money_saved += alert.transaction.amount
-                    MONEY_SAVED.set(stats.money_saved)
+                    asyncio.create_task(_send_block_webhook(
+                        alert.model_dump(), verdict.get("summary", ""), verdict.get("confidence")))
                 elif verdict_action == "cleared":
                     stats.cleared_count += 1
 
@@ -369,10 +434,6 @@ async def run_dispute_worker():
                         await manager.broadcast("dispute_update", stored)
                         break
 
-                # Prometheus: record dispute outcome
-                from backend.metrics.prometheus import DISPUTES_TOTAL
-                DISPUTES_TOTAL.labels(action=action).inc()
-
                 # Update stats
                 if action == "approved":
                     stats.disputes_approved += 1
@@ -385,6 +446,32 @@ async def run_dispute_worker():
                     "amount": dispute["amount"],
                     "action": action.upper(),
                 })
+
+                # Adaptive Shield: upsert dispute resolution into FAISS
+                from backend.vector_store.faiss_store import vector_store
+                if vector_store.enabled:
+                    dispute_txn = {
+                        "id": dispute.get("transaction_id", dispute_id),
+                        "account_id": dispute.get("account_id", ""),
+                        "merchant_name": dispute.get("merchant_name", "Unknown"),
+                        "amount": dispute.get("amount", 0),
+                        "category": "Dispute",
+                        "city": "",
+                        "country": "US",
+                        "risk_score": 0.5 if action == "approved" else 0.2,
+                        "is_anomaly": action == "approved",
+                        "timestamp": dispute.get("timestamp", ""),
+                    }
+                    loop = asyncio.get_event_loop()
+                    loop.run_in_executor(
+                        None,
+                        vector_store.upsert_investigation,
+                        f"dispute-{dispute_id}",
+                        "blocked" if action == "approved" else "cleared",
+                        result.get("summary", "")[:300],
+                        dispute_txn,
+                        "human",
+                    )
 
                 await manager.broadcast("stats", stats.model_dump())
                 logger.info(f"Dispute {dispute_id} resolved: {action}")
@@ -495,10 +582,6 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="Aegis API", lifespan=lifespan)
 
-# Mount Prometheus metrics endpoint at /metrics
-from backend.metrics.prometheus import create_metrics_app
-app.mount("/metrics", create_metrics_app())
-
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -506,6 +589,13 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+# Silence /metrics 404 noise (hit by browser extensions / monitoring tools)
+@app.get("/metrics")
+@app.get("/metrics/")
+async def metrics_noop():
+    return {"status": "ok"}
 
 
 @app.get("/api/health")
@@ -522,7 +612,6 @@ async def health():
         "vector_store_enabled": vector_store.enabled,
         "neo4j_connected": graph_client.enabled,
         "redis_connected": redis_cache.enabled,
-        "metrics_enabled": settings.metrics_enabled,
     }
 
 
@@ -587,6 +676,110 @@ async def inject_dispute():
     return {"status": "injected", "dispute": dispute}
 
 
+@app.post("/api/demo/start")
+async def start_demo():
+    """Start an automated demo sequence that injects diverse fraud scenarios"""
+    global _demo_running
+    if _demo_running:
+        return {"status": "already_running"}
+    if not producer:
+        return {"status": "error", "message": "Producer not running"}
+    _demo_running = True
+    asyncio.create_task(_run_demo_sequence())
+    return {"status": "started"}
+
+
+@app.post("/api/demo/stop")
+async def stop_demo():
+    """Stop the running demo sequence"""
+    global _demo_running
+    _demo_running = False
+    return {"status": "stopped"}
+
+
+@app.get("/api/demo/status")
+async def demo_status():
+    """Check if a demo sequence is currently running"""
+    return {"running": _demo_running}
+
+
+async def _run_demo_sequence():
+    """Run a curated demo loop: fraud scenarios, disputes, and mixed events.
+
+    Loops continuously with varied pacing to keep the dashboard lively.
+    Injects a mix of fraud, disputes, and back-to-back events.
+    """
+    global _demo_running
+    try:
+        # Curated rounds — each round is a themed burst of activity
+        rounds = [
+            # Round 1: International fraud blitz
+            {"frauds": [0, 1, 7], "dispute": True, "pace": (4, 7)},
+            # Round 2: Financial crimes
+            {"frauds": [4, 8, 2], "dispute": False, "pace": (5, 8)},
+            # Round 3: Luxury + dispute wave
+            {"frauds": [11, 5], "dispute": True, "pace": (3, 6)},
+            # Round 4: Rapid fire
+            {"frauds": [3, 10, 6, 12], "dispute": True, "pace": (2, 4)},
+            # Round 5: High-value targets
+            {"frauds": [9, 13, 8], "dispute": False, "pace": (4, 7)},
+            # Round 6: Mixed chaos — everything at once
+            {"frauds": [0, 7, 4, 11], "dispute": True, "pace": (2, 5)},
+        ]
+
+        round_idx = 0
+        while _demo_running:
+            current_round = rounds[round_idx % len(rounds)]
+            pace_min, pace_max = current_round["pace"]
+
+            # Inject fraud scenarios for this round
+            for fraud_idx in current_round["frauds"]:
+                if not _demo_running:
+                    break
+                await asyncio.sleep(random.uniform(pace_min, pace_max))
+                try:
+                    await producer.inject_fraud(fraud_idx)
+                except Exception as e:
+                    logger.warning(f"Demo fraud inject failed: {e}")
+
+                # Occasionally inject a dispute mid-round for variety
+                if random.random() < 0.3 and transaction_buffer:
+                    await asyncio.sleep(random.uniform(2, 4))
+                    candidates = [t for t in list(transaction_buffer)[:20] if not t.get("is_anomaly")]
+                    if candidates:
+                        txn = random.choice(candidates)
+                        dispute = generate_dispute(txn)
+                        dispute_buffer.appendleft(dispute)
+                        stats.disputes_filed += 1
+                        await manager.broadcast("dispute", dispute)
+                        await dispute_queue.put(dispute)
+                        await manager.broadcast("stats", stats.model_dump())
+
+            # End-of-round dispute injection if flagged
+            if current_round["dispute"] and _demo_running and transaction_buffer:
+                await asyncio.sleep(random.uniform(2, 4))
+                candidates = [t for t in list(transaction_buffer)[:20] if not t.get("is_anomaly")]
+                if candidates:
+                    txn = random.choice(candidates)
+                    dispute = generate_dispute(txn)
+                    dispute_buffer.appendleft(dispute)
+                    stats.disputes_filed += 1
+                    await manager.broadcast("dispute", dispute)
+                    await dispute_queue.put(dispute)
+                    await manager.broadcast("stats", stats.model_dump())
+
+            # Brief breather between rounds
+            if _demo_running:
+                await asyncio.sleep(random.uniform(6, 10))
+
+            round_idx += 1
+
+    except Exception as e:
+        logger.error(f"Demo sequence error: {e}")
+    finally:
+        _demo_running = False
+
+
 @app.post("/api/alerts/{alert_id}/review")
 async def review_alert(alert_id: str, review: AlertReviewRequest):
     """Human-in-the-loop: confirm or override an AI agent's verdict.
@@ -624,6 +817,10 @@ async def review_alert(alert_id: str, review: AlertReviewRequest):
         stats.money_saved += txn_amount
     elif chosen_action == "cleared":
         stats.cleared_count += 1
+
+    # Notify #human-reviews with the resolution (follow-up to the review request)
+    asyncio.create_task(_send_resolution_webhook(
+        target_alert, chosen_action, target_alert.get("human_reason", "")))
 
     logger.info(f"HITL: Alert {alert_id} resolved by human: {old_status} -> {chosen_action}")
 
@@ -807,9 +1004,7 @@ async def get_account_velocity(account_id: str):
 
 @app.websocket("/ws/feed")
 async def websocket_feed(websocket: WebSocket):
-    from backend.metrics.prometheus import ACTIVE_WS_CONNECTIONS
     await manager.connect(websocket)
-    ACTIVE_WS_CONNECTIONS.set(len(manager.active_connections))
     try:
         # Send current state snapshot on connect (backfill)
         await websocket.send_json({"type": "stats", "data": stats.model_dump()})
@@ -834,7 +1029,5 @@ async def websocket_feed(websocket: WebSocket):
                 await websocket.send_json({"type": "ping", "data": {}})
     except WebSocketDisconnect:
         manager.disconnect(websocket)
-        ACTIVE_WS_CONNECTIONS.set(len(manager.active_connections))
     except Exception:
         manager.disconnect(websocket)
-        ACTIVE_WS_CONNECTIONS.set(len(manager.active_connections))

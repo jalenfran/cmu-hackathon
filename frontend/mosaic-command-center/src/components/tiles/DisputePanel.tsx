@@ -1,6 +1,6 @@
 import React from 'react';
 import { DisputeEvent } from '../../types/events';
-import { formatCurrency, timeAgo } from '../../utils/formatters';
+import { formatCurrency, timeAgo, stripMarkdown } from '../../utils/formatters';
 import { Tile } from '../layout/Tile';
 import { Gavel, Clock, CheckCircle, XCircle, AlertTriangle, Loader2 } from 'lucide-react';
 
@@ -127,7 +127,7 @@ export function DisputePanel({ disputes }: DisputePanelProps) {
                   <div className="font-semibold mb-0.5" style={{ color: status.color }}>
                     AI Resolution
                   </div>
-                  {dispute.resolution_summary.slice(0, 200)}
+                  {stripMarkdown(dispute.resolution_summary).slice(0, 200)}
                 </div>
               )}
 

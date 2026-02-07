@@ -2,7 +2,7 @@ import React, { useRef, useEffect, useState, useMemo } from 'react';
 import { AgentTrace } from '../../types/events';
 import { getTraceColor, getTracePrefix, formatTime, getVerdictColor, parseVerdict, parseStepNumber } from '../../utils/formatters';
 import { Tile } from '../layout/Tile';
-import { ChevronDown, ChevronRight, Brain, Zap, ClipboardList, Target, Scale } from 'lucide-react';
+import { Brain, Zap, ClipboardList, Target, Scale } from 'lucide-react';
 
 interface AgentConsoleProps {
   traces: AgentTrace[];
@@ -23,13 +23,7 @@ function StepIcon({ type }: { type: string }) {
 
 export function AgentConsole({ traces }: AgentConsoleProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
-  const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
-
-  useEffect(() => {
-    if (scrollRef.current) {
-      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
-    }
-  }, [traces]);
+  const [selectedTab, setSelectedTab] = useState<string | null>(null);
 
   // Group traces by alert_id into investigations
   const investigations = useMemo(() => {
@@ -42,30 +36,84 @@ export function AgentConsole({ traces }: AgentConsoleProps) {
     return Array.from(groups.entries());
   }, [traces]);
 
-  const currentAlert = traces.length > 0 ? traces[traces.length - 1].alert_id : null;
-  const isActive = traces.length > 0 && traces[traces.length - 1].step_type !== 'verdict';
+  // Auto-select tab: newest active investigation, or stay on current if still active
+  useEffect(() => {
+    if (investigations.length === 0) {
+      setSelectedTab(null);
+      return;
+    }
 
-  // Get current step progress from latest trace
-  const latestTrace = traces.length > 0 ? traces[traces.length - 1] : null;
-  const stepInfo = latestTrace ? parseStepNumber(latestTrace.content) : null;
+    // If nothing selected, pick the newest
+    if (!selectedTab) {
+      setSelectedTab(investigations[investigations.length - 1][0]);
+      return;
+    }
 
-  const toggleCollapse = (alertId: string) => {
-    setCollapsed(prev => {
-      const next = new Set(prev);
-      if (next.has(alertId)) next.delete(alertId);
-      else next.add(alertId);
-      return next;
-    });
-  };
+    // If current selection still exists and is active, keep it
+    const currentTraces = investigations.find(([id]) => id === selectedTab)?.[1];
+    if (currentTraces && !currentTraces.some(t => t.step_type === 'verdict')) {
+      return; // Stay on active investigation
+    }
+
+    // Current tab completed — switch to newest active, or newest overall
+    const newestActive = [...investigations].reverse().find(
+      ([, alertTraces]) => !alertTraces.some(t => t.step_type === 'verdict')
+    );
+    if (newestActive) {
+      setSelectedTab(newestActive[0]);
+    } else {
+      // All completed, stay on current if it exists, else newest
+      const currentExists = investigations.some(([id]) => id === selectedTab);
+      if (!currentExists) {
+        setSelectedTab(investigations[investigations.length - 1][0]);
+      }
+    }
+  }, [investigations, selectedTab]);
+
+  // Auto-scroll when new traces arrive for the selected tab
+  useEffect(() => {
+    if (scrollRef.current) {
+      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+    }
+  }, [traces, selectedTab]);
+
+  // Get selected investigation's traces
+  const selectedTraces = useMemo(() => {
+    if (!selectedTab) return [];
+    return investigations.find(([id]) => id === selectedTab)?.[1] || [];
+  }, [investigations, selectedTab]);
+
+  // Derive status info for the selected tab
+  const selectedHasVerdict = selectedTraces.some(t => t.step_type === 'verdict');
+  const selectedIsActive = selectedTraces.length > 0 && !selectedHasVerdict;
+
+  // Get step progress for selected investigation
+  const selectedStepInfo = useMemo(() => {
+    if (selectedTraces.length === 0) return null;
+    const last = selectedTraces[selectedTraces.length - 1];
+    return parseStepNumber(last.content);
+  }, [selectedTraces]);
+
+  // Count active investigations
+  const activeCount = useMemo(() => {
+    return investigations.filter(
+      ([, alertTraces]) => !alertTraces.some(t => t.step_type === 'verdict')
+    ).length;
+  }, [investigations]);
 
   const statusBadge = (
     <div className={`flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium ${
-      isActive
+      activeCount > 0
         ? 'bg-cyan-900/30 text-cyan-400 border border-cyan-500/30'
         : 'bg-gray-800/50 text-gray-500 border border-gray-700/30'
     }`}>
-      <span className={`w-1.5 h-1.5 rounded-full ${isActive ? 'bg-cyan-400 animate-pulse' : 'bg-gray-600'}`} />
-      {isActive && stepInfo ? `Step ${stepInfo.step}/${stepInfo.total}` : isActive ? 'ACTIVE' : 'IDLE'}
+      <span className={`w-1.5 h-1.5 rounded-full ${activeCount > 0 ? 'bg-cyan-400 animate-pulse' : 'bg-gray-600'}`} />
+      {activeCount > 0
+        ? (activeCount === 1
+          ? (selectedIsActive && selectedStepInfo ? `Step ${selectedStepInfo.step}/${selectedStepInfo.total}` : 'ACTIVE')
+          : `${activeCount} ACTIVE`)
+        : 'IDLE'
+      }
     </div>
   );
 
@@ -168,10 +216,6 @@ export function AgentConsole({ traces }: AgentConsoleProps) {
   // Highlight key-value pairs and keywords in tool results
   const renderToolResult = (content: string) => {
     return content.split('\n').map((line, i) => {
-      // Highlight WARNING/VERIFIED/NOT REGISTERED keywords
-      let processed = line;
-      const highlights: Array<{ text: string; color: string }> = [];
-
       if (/WARNING|NOT REGISTERED|FRAUD|IMPOSSIBLE/i.test(line)) {
         return (
           <span key={i} className="block">
@@ -187,7 +231,6 @@ export function AgentConsole({ traces }: AgentConsoleProps) {
         );
       }
 
-      // Key: Value highlighting
       const kvMatch = line.match(/^(\s*[\w\s]+?):\s+(.+)$/);
       if (kvMatch) {
         return (
@@ -210,25 +253,79 @@ export function AgentConsole({ traces }: AgentConsoleProps) {
           {/* Terminal header bar */}
           <div className="flex items-center gap-2 px-3 py-2 bg-gray-900/80 border-b border-gray-800/30">
             <span className="text-[10px] text-gray-500 font-mono">
-              aegis-agent {isActive ? <>&mdash; investigating {currentAlert?.slice(0, 16)}</> : <>&mdash; monitoring</>}
+              aegis-agent {selectedIsActive ? <>&mdash; investigating {selectedTab?.slice(0, 16)}</> : <>&mdash; monitoring</>}
             </span>
-            {isActive && stepInfo && (
+            {selectedIsActive && selectedStepInfo && (
               <div className="ml-auto flex items-center gap-2">
                 <div className="w-24 h-1 bg-gray-800 rounded-full overflow-hidden">
                   <div
                     className="h-full rounded-full transition-all duration-500"
                     style={{
-                      width: `${(stepInfo.step / stepInfo.total) * 100}%`,
+                      width: `${(selectedStepInfo.step / selectedStepInfo.total) * 100}%`,
                       background: 'linear-gradient(90deg, #38bdf8, #a78bfa)',
                     }}
                   />
                 </div>
-                <span className="text-[10px] text-cyan-400/60 font-mono">{stepInfo.step}/{stepInfo.total}</span>
+                <span className="text-[10px] text-cyan-400/60 font-mono">{selectedStepInfo.step}/{selectedStepInfo.total}</span>
               </div>
             )}
           </div>
 
-          {/* Console output */}
+          {/* Tab bar — only show when there are investigations */}
+          {investigations.length > 0 && (
+            <div className="flex items-center bg-gray-900/60 border-b border-gray-800/30 overflow-x-auto scrollbar-thin">
+              {investigations.map(([alertId, alertTraces]) => {
+                const isSelected = alertId === selectedTab;
+                const hasVerdict = alertTraces.some(t => t.step_type === 'verdict');
+                const verdictTrace = alertTraces.find(t => t.step_type === 'verdict');
+                const verdict = verdictTrace ? parseVerdict(
+                  parseStepNumber(verdictTrace.content)?.text || verdictTrace.content
+                ) : null;
+                const verdictColor = verdict ? getVerdictColor(verdict.action) : null;
+                const isActiveInvestigation = !hasVerdict;
+
+                return (
+                  <button
+                    key={alertId}
+                    onClick={() => setSelectedTab(alertId)}
+                    className={`flex items-center gap-1.5 px-3 py-1.5 text-[10px] font-mono whitespace-nowrap border-b-2 transition-all flex-shrink-0 ${
+                      isSelected
+                        ? 'border-cyan-400 bg-cyan-900/10 text-gray-200'
+                        : 'border-transparent text-gray-500 hover:text-gray-300 hover:bg-gray-800/30'
+                    }`}
+                  >
+                    {/* Status dot */}
+                    {isActiveInvestigation ? (
+                      <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-pulse flex-shrink-0" />
+                    ) : (
+                      <span
+                        className="w-1.5 h-1.5 rounded-full flex-shrink-0"
+                        style={{ backgroundColor: verdictColor || '#6b7280' }}
+                      />
+                    )}
+
+                    {/* Alert ID */}
+                    <span>{alertId.replace('alert-', '').slice(0, 8)}</span>
+
+                    {/* Verdict label */}
+                    {hasVerdict && verdict && (
+                      <span
+                        className="text-[9px] px-1 py-0 rounded font-bold"
+                        style={{
+                          color: verdictColor || '#fbbf24',
+                          background: `${verdictColor}15`,
+                        }}
+                      >
+                        {verdict.action}
+                      </span>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+          )}
+
+          {/* Console output — shows selected tab's traces only */}
           <div
             ref={scrollRef}
             className="flex-1 overflow-y-auto font-mono text-xs space-y-0.5 p-3 bg-[#0a0a10] scrollbar-thin"
@@ -247,73 +344,13 @@ export function AgentConsole({ traces }: AgentConsoleProps) {
               </div>
             )}
 
-            {/* Render investigations grouped by alert_id */}
-            {investigations.map(([alertId, alertTraces], groupIdx) => {
-              const isCurrentGroup = alertId === currentAlert;
-              const isCollapsed = collapsed.has(alertId);
-              const hasVerdict = alertTraces.some(t => t.step_type === 'verdict');
-              const verdictTrace = alertTraces.find(t => t.step_type === 'verdict');
-              const verdict = verdictTrace ? parseVerdict(
-                parseStepNumber(verdictTrace.content)?.text || verdictTrace.content
-              ) : null;
-              const verdictColor = verdict ? getVerdictColor(verdict.action) : null;
-
-              // Get max step from traces
-              let maxStep = 0;
-              alertTraces.forEach(t => {
-                const s = parseStepNumber(t.content);
-                if (s && s.step > maxStep) maxStep = s.step;
-              });
-
-              return (
-                <div key={alertId} className={groupIdx > 0 ? 'mt-3 pt-3 border-t border-gray-800/30' : ''}>
-                  {/* Investigation header (only show if multiple investigations) */}
-                  {investigations.length > 1 && (
-                    <button
-                      onClick={() => toggleCollapse(alertId)}
-                      className="flex items-center gap-2 w-full text-left px-1 py-1 rounded hover:bg-gray-800/30 transition-colors mb-1"
-                    >
-                      {isCollapsed
-                        ? <ChevronRight size={12} className="text-gray-600" />
-                        : <ChevronDown size={12} className="text-gray-600" />
-                      }
-                      <span className="text-[10px] text-gray-500 font-mono">
-                        {alertId.slice(0, 16)}
-                      </span>
-                      <span className="text-[10px] text-gray-600">
-                        {maxStep > 0 ? `${maxStep}/6 steps` : `${alertTraces.length} entries`}
-                      </span>
-                      {hasVerdict && verdict && (
-                        <span
-                          className="text-[10px] px-1.5 py-0 rounded font-bold ml-auto"
-                          style={{
-                            color: verdictColor || '#fbbf24',
-                            background: `${verdictColor}15`,
-                            border: `1px solid ${verdictColor}30`,
-                          }}
-                        >
-                          {verdict.action}
-                        </span>
-                      )}
-                      {!hasVerdict && isCurrentGroup && (
-                        <span className="text-[10px] text-cyan-400/60 ml-auto flex items-center gap-1">
-                          <span className="w-1 h-1 bg-cyan-400 rounded-full animate-pulse" />
-                          investigating
-                        </span>
-                      )}
-                    </button>
-                  )}
-
-                  {/* Traces */}
-                  {!isCollapsed && alertTraces.map((trace, i) =>
-                    renderTrace(trace, groupIdx * 1000 + i, groupIdx === investigations.length - 1 && i === alertTraces.length - 1)
-                  )}
-                </div>
-              );
-            })}
+            {/* Render only selected tab's traces */}
+            {selectedTraces.map((trace, i) =>
+              renderTrace(trace, i, i === selectedTraces.length - 1)
+            )}
 
             {/* Active investigation cursor */}
-            {isActive && (
+            {selectedIsActive && (
               <div className="flex gap-2 py-0.5 px-1">
                 <span className="text-gray-700 flex-shrink-0 w-14 text-[10px]" />
                 <span className="flex-shrink-0" style={{ width: '18px' }} />
@@ -325,8 +362,11 @@ export function AgentConsole({ traces }: AgentConsoleProps) {
 
           {/* Bottom status bar */}
           <div className="flex items-center justify-between px-3 py-1.5 bg-gray-900/80 border-t border-gray-800/30 text-[10px] text-gray-600 font-mono">
-            <span>{investigations.length} investigation{investigations.length !== 1 ? 's' : ''} · {traces.length} traces</span>
-            <span className={isActive ? 'text-cyan-400/60' : ''}>{isActive ? 'ACTIVE' : 'STANDBY'}</span>
+            <span>
+              {activeCount > 0 && <><span className="text-cyan-400/60">{activeCount} active</span> &middot; </>}
+              {investigations.length} investigation{investigations.length !== 1 ? 's' : ''} &middot; {selectedTraces.length} traces
+            </span>
+            <span className={activeCount > 0 ? 'text-cyan-400/60' : ''}>{activeCount > 0 ? 'ACTIVE' : 'STANDBY'}</span>
           </div>
         </div>
       </div>

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useWebSocket } from './hooks/useWebSocket';
 import { BentoGrid } from './components/layout/BentoGrid';
 import { StatsOverview } from './components/tiles/StatsOverview';
@@ -9,7 +9,7 @@ import { AgentConsole } from './components/tiles/AgentConsole';
 import { DisputePanel } from './components/tiles/DisputePanel';
 import { AccountActivity } from './components/tiles/AccountActivity';
 import { InfraStatus } from './components/tiles/InfraStatus';
-import { Shield, Wifi, WifiOff, Database, Clock, Maximize, Minimize, Server, X } from 'lucide-react';
+import { Shield, Wifi, WifiOff, Database, Clock, Maximize, Minimize, Server, X, Zap } from 'lucide-react';
 import { API_URL } from './config';
 import './App.css';
 
@@ -20,6 +20,23 @@ function App() {
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [showStatus, setShowStatus] = useState(false);
   const [serviceCount, setServiceCount] = useState({ online: 0, total: 0 });
+  const [demoRunning, setDemoRunning] = useState(false);
+
+  // Derive active investigation IDs from agent traces (supports parallel agents)
+  const activeInvestigationIds = useMemo(() => {
+    const groups: Record<string, typeof agentTraces> = {};
+    for (const trace of agentTraces) {
+      if (!groups[trace.alert_id]) groups[trace.alert_id] = [];
+      groups[trace.alert_id].push(trace);
+    }
+    const active = new Set<string>();
+    for (const alertId of Object.keys(groups)) {
+      if (!groups[alertId].some(t => t.step_type === 'verdict')) {
+        active.add(alertId);
+      }
+    }
+    return active;
+  }, [agentTraces]);
 
   // Sync fullscreen state with browser
   useEffect(() => {
@@ -36,13 +53,22 @@ function App() {
     }
   };
 
+  const toggleDemo = async () => {
+    try {
+      const endpoint = demoRunning ? 'stop' : 'start';
+      const res = await fetch(`${API_URL}/api/demo/${endpoint}`, { method: 'POST' });
+      const data = await res.json();
+      setDemoRunning(endpoint === 'start' && (data.status === 'started' || data.status === 'already_running'));
+    } catch {}
+  };
+
   // Update clock every second
   useEffect(() => {
     const timer = setInterval(() => setCurrentTime(new Date()), 1000);
     return () => clearInterval(timer);
   }, []);
 
-  // Check backend health
+  // Check backend health + demo status
   useEffect(() => {
     const checkHealth = async () => {
       try {
@@ -56,7 +82,6 @@ function App() {
           data.vector_store_enabled,
           data.neo4j_connected,
           data.redis_connected,
-          data.metrics_enabled,
           data.producer_active,
         ];
         setServiceCount({
@@ -67,6 +92,12 @@ function App() {
         setNessieConnected(false);
         setServiceCount({ online: 0, total: 7 });
       }
+      // Poll demo status
+      try {
+        const demoRes = await fetch(`${API_URL}/api/demo/status`);
+        const demoData = await demoRes.json();
+        setDemoRunning(demoData.running);
+      } catch {}
     };
     checkHealth();
     const interval = setInterval(checkHealth, 15000);
@@ -117,6 +148,19 @@ function App() {
 
           {/* Status Indicators */}
           <div className="flex items-center gap-2">
+            {/* Demo toggle */}
+            <button
+              onClick={toggleDemo}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold border transition-all ${
+                demoRunning
+                  ? 'bg-red-900/40 text-red-400 border-red-500/40 hover:bg-red-800/50'
+                  : 'bg-emerald-900/40 text-emerald-400 border-emerald-500/40 hover:bg-emerald-800/50'
+              }`}
+            >
+              <Zap size={12} />
+              {demoRunning ? 'STOP DEMO' : 'START DEMO'}
+            </button>
+
             {/* Fullscreen toggle */}
             <button
               onClick={toggleFullscreen}
@@ -176,7 +220,7 @@ function App() {
 
         {/* Row 2: Transaction feed + Alerts + Disputes */}
         <TransactionFeed transactions={transactions} />
-        <AlertPanel alerts={alerts} agentTraces={agentTraces} />
+        <AlertPanel alerts={alerts} agentTraces={agentTraces} activeInvestigationIds={activeInvestigationIds} />
         <DisputePanel disputes={disputes} />
 
         {/* Row 3: Agent console + Risk chart + Account Activity */}

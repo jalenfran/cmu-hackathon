@@ -96,6 +96,19 @@ export function parseVerdict(content: string): {
   return null;
 }
 
+export function stripMarkdown(text: string): string {
+  return text
+    .replace(/\*\*(.*?)\*\*/g, '$1')      // **bold**
+    .replace(/\*(.*?)\*/g, '$1')           // *italic*
+    .replace(/#{1,6}\s+/g, '')             // ### headings
+    .replace(/^[-*+]\s+/gm, '')            // - bullet points
+    .replace(/^\d+\.\s+/gm, '')            // 1. numbered lists
+    .replace(/`([^`]+)`/g, '$1')           // `code`
+    .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1') // [link](url)
+    .replace(/\n{3,}/g, '\n\n')            // collapse excessive newlines
+    .trim();
+}
+
 export function parseStepNumber(content: string): { step: number; total: number; text: string } | null {
   const match = content.match(/^\[(\d+)\/(\d+)\]\s*(.*)/s);
   if (match) {

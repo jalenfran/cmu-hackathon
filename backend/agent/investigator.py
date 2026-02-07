@@ -217,6 +217,48 @@ class FraudInvestigatorAgent:
                 tool_input[key] = alert_context.get("merchant_id", tool_input[key])
         return tool_input
 
+    def _compute_confidence(self, alert_data: dict, evidence: list, action: str, tool_count: int) -> float:
+        """Compute a confidence score (0-100) for the verdict based on evidence strength."""
+        txn = alert_data.get("transaction", alert_data)
+        risk_score = txn.get("risk_score", 0)
+        evidence_text = " ".join(evidence).upper()
+
+        # Base: scale risk_score into [0, 40]
+        base = min(risk_score * 50, 40)
+
+        # Agreeing / contradicting signals
+        block_signals = [
+            risk_score > 0.7,
+            "IMPOSSIBLE" in evidence_text,
+            "NOT REGISTERED" in evidence_text,
+            "FRAUD REPORTS" in evidence_text,
+            txn.get("amount", 0) > 5000,
+        ]
+        clear_signals = [
+            risk_score < 0.3,
+            "FEASIBLE" in evidence_text,
+            "VERIFIED" in evidence_text and "NOT" not in evidence_text.split("VERIFIED")[0][-10:],
+        ]
+
+        if action == "blocked":
+            base += sum(15 for s in block_signals if s)
+            base -= sum(10 for s in clear_signals if s)
+        elif action == "cleared":
+            base += sum(15 for s in clear_signals if s)
+            base -= sum(10 for s in block_signals if s)
+        else:
+            # flagged = uncertain by definition
+            pass
+
+        # Bonus for tool calls (more evidence = more confidence), capped at 25
+        base += min(tool_count * 5, 25)
+
+        # Flagged caps at 55 (uncertainty)
+        if action == "flagged":
+            base = min(base, 55)
+
+        return max(5.0, min(98.0, round(base, 1)))
+
     def _auto_verdict(self, alert_data: dict, evidence: list) -> str:
         """Generate a verdict automatically when the LLM fails to call recommend_action"""
         txn = alert_data.get("transaction", alert_data)
@@ -448,9 +490,12 @@ class FraudInvestigatorAgent:
             elif "FLAG" in output_upper or "REVIEW" in output_upper:
                 action = "flagged"
 
+            confidence = self._compute_confidence(alert_data, evidence_gathered, action, successful_tool_calls)
+
             return {
                 "alert_id": alert_id,
                 "action": action,
+                "confidence": confidence,
                 "summary": final_output[:800] + ("..." if len(final_output) > 800 else ""),
                 "raw_output": final_output,
             }

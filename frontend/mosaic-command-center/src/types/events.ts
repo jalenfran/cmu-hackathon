@@ -26,6 +26,7 @@ export interface AlertEvent {
   review_status: 'awaiting_review' | 'resolved' | null;
   human_override: string | null;
   human_reason: string | null;
+  confidence_score: number | null;
   timestamp: string;
 }
 

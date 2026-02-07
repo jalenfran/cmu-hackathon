@@ -161,6 +161,22 @@
   border-radius: inherit;
 }
 
+/* === Investigation focus ring (purple glow for active investigation) === */
+@keyframes focusRing {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(167, 139, 250, 0); }
+  50% { box-shadow: 0 0 0 4px rgba(167, 139, 250, 0.2); }
+}
+
+.investigation-focus {
+  animation: focusRing 2s ease-in-out infinite;
+}
+
+/* === Alert slide-in animation === */
+@keyframes alertSlideIn {
+  from { opacity: 0; transform: translateY(-8px) scale(0.98); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
 /* === Header frosted bottom edge glow === */
 .header-glow::after {
   content: '';

@@ -22,6 +22,8 @@ frontend/mosaic-command-center/build/
 # IDE
 .vscode/
 .idea/
+.claude/
+.cursor/
 *.swp
 *.swo
 
