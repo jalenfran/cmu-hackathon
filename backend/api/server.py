@@ -13,7 +13,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from backend.config import settings
 from backend.api.connection_manager import ConnectionManager
-from backend.api.models import DashboardStats, TransactionEvent, AlertEvent
+from backend.api.models import DashboardStats, TransactionEvent, AlertEvent, AlertReviewRequest
 from backend.streaming.producer import TransactionProducer, generate_dispute
 from backend.streaming.consumer import TransactionConsumer
 from backend.anomaly_detection.engine import AnomalyDetectionEngine
@@ -210,17 +210,28 @@ async def run_agent_worker():
                 INVESTIGATION_DURATION.observe(time.time() - start_time)
 
                 # Update alert with verdict and broadcast
+                verdict_action = verdict.get("action", "flagged")
                 for stored_alert in alert_buffer:
                     if stored_alert["id"] == alert.id:
-                        stored_alert["status"] = verdict.get("action", "flagged")
                         stored_alert["agent_verdict"] = verdict.get("summary", "")
+
+                        # HITL: "flagged" verdicts go to human review instead of
+                        # being finalized. "blocked" and "cleared" are high-confidence
+                        # and applied immediately.
+                        if verdict_action == "flagged":
+                            stored_alert["status"] = "awaiting_review"
+                            stored_alert["review_status"] = "awaiting_review"
+                        else:
+                            stored_alert["status"] = verdict_action
+
                         await manager.broadcast("alert_update", stored_alert)
                         break
 
                 # Prometheus: record investigation verdict
-                verdict_action = verdict.get("action", "flagged")
                 INVESTIGATIONS_TOTAL.labels(verdict=verdict_action).inc()
 
+                # Only update stats for high-confidence verdicts;
+                # awaiting_review alerts will update stats when a human decides
                 if verdict_action == "blocked":
                     stats.blocked_count += 1
                     stats.money_saved += alert.transaction.amount
@@ -576,6 +587,75 @@ async def inject_dispute():
     return {"status": "injected", "dispute": dispute}
 
 
+@app.post("/api/alerts/{alert_id}/review")
+async def review_alert(alert_id: str, review: AlertReviewRequest):
+    """Human-in-the-loop: confirm or override an AI agent's verdict.
+
+    When the agent returns FLAG_FOR_REVIEW, the alert enters 'awaiting_review' status.
+    A human analyst can then confirm the agent's recommendation or override it.
+    The decision is fed back into the FAISS vector store so future investigations
+    learn from human corrections (Adaptive Shield).
+    """
+    # Find the alert in the buffer
+    target_alert = None
+    for stored_alert in alert_buffer:
+        if stored_alert["id"] == alert_id:
+            target_alert = stored_alert
+            break
+
+    if target_alert is None:
+        return {"status": "error", "message": f"Alert {alert_id} not found"}
+
+    # Human must choose an explicit action: block or clear
+    chosen_action = review.override_action
+    if not chosen_action or chosen_action not in ("blocked", "cleared"):
+        return {"status": "error", "message": "override_action must be 'blocked' or 'cleared'"}
+
+    old_status = target_alert["status"]
+    target_alert["status"] = chosen_action
+    target_alert["review_status"] = "resolved"
+    target_alert["human_override"] = chosen_action
+    target_alert["human_reason"] = review.reason or f"Human decided to {chosen_action}"
+
+    # Update stats
+    if chosen_action == "blocked":
+        stats.blocked_count += 1
+        txn_amount = target_alert.get("transaction", {}).get("amount", 0)
+        stats.money_saved += txn_amount
+    elif chosen_action == "cleared":
+        stats.cleared_count += 1
+
+    logger.info(f"HITL: Alert {alert_id} resolved by human: {old_status} -> {chosen_action}")
+
+    # Adaptive Shield: upsert human decision into FAISS for future learning
+    from backend.vector_store.faiss_store import vector_store
+    if vector_store.enabled:
+        txn_data = target_alert.get("transaction", {})
+        final_verdict = target_alert["status"]
+        summary = target_alert.get("human_reason", "")
+        loop = asyncio.get_event_loop()
+        loop.run_in_executor(
+            None,
+            vector_store.upsert_investigation,
+            alert_id,
+            final_verdict,
+            summary,
+            txn_data,
+            "human",  # verdict_source
+        )
+
+    # Broadcast the updated alert and stats
+    await manager.broadcast("alert_update", target_alert)
+    await manager.broadcast("stats", stats.model_dump())
+
+    return {
+        "status": "ok",
+        "alert_id": alert_id,
+        "review_status": target_alert["review_status"],
+        "final_verdict": target_alert["status"],
+    }
+
+
 @app.get("/api/graph/account/{account_id}")
 async def get_account_graph(account_id: str):
     """Get the graph neighborhood around an account for visualization"""
@@ -600,6 +680,118 @@ async def get_fraud_ring(account_id: str):
         None, graph_client.detect_fraud_ring, account_id
     )
     return result
+
+
+@app.get("/api/graph/network")
+async def get_fraud_network(account_id: str | None = None):
+    """Build a bipartite graph of accounts <-> merchants from recent transactions.
+
+    Returns nodes (accounts and merchants) and edges (transactions) for
+    fraud network visualization. Only includes merchants shared by 2+ accounts
+    to highlight interesting connections. Flagged accounts/merchants are marked.
+
+    Optionally pass ?account_id=X to focus on a specific account's neighborhood.
+    """
+    from collections import defaultdict
+
+    # Build merchant -> set of accounts mapping
+    merchant_accounts: dict[str, set[str]] = defaultdict(set)
+    merchant_info: dict[str, dict] = {}
+    account_info: dict[str, dict] = defaultdict(lambda: {"txn_count": 0, "flagged": False, "total_amount": 0.0})
+    edge_list: list[dict] = []
+
+    # Gather flagged account/merchant IDs from alerts
+    flagged_accounts: set[str] = set()
+    flagged_merchants: set[str] = set()
+    for alert_dict in alert_buffer:
+        txn = alert_dict.get("transaction", {})
+        flagged_accounts.add(txn.get("account_id", ""))
+        flagged_merchants.add(txn.get("merchant_id", ""))
+
+    # Process transactions
+    for txn_dict in transaction_buffer:
+        aid = txn_dict.get("account_id", "")
+        mid = txn_dict.get("merchant_id", "")
+        if not aid or not mid:
+            continue
+
+        merchant_accounts[mid].add(aid)
+
+        if mid not in merchant_info:
+            merchant_info[mid] = {
+                "label": txn_dict.get("merchant_name", mid),
+                "category": txn_dict.get("category", "Unknown"),
+            }
+
+        account_info[aid]["txn_count"] += 1
+        account_info[aid]["total_amount"] += txn_dict.get("amount", 0)
+        if aid in flagged_accounts:
+            account_info[aid]["flagged"] = True
+
+        edge_list.append({
+            "source": aid,
+            "target": mid,
+            "amount": txn_dict.get("amount", 0),
+            "is_anomaly": txn_dict.get("is_anomaly", False),
+        })
+
+    # Filter: only keep merchants shared by 2+ accounts (interesting connections)
+    # If focusing on a single account, include all its merchants
+    if account_id:
+        relevant_merchants = {
+            mid for mid, accs in merchant_accounts.items()
+            if account_id in accs
+        }
+        # Also include merchants shared with neighbors
+        neighbor_accounts = set()
+        for mid in relevant_merchants:
+            neighbor_accounts.update(merchant_accounts[mid])
+        relevant_accounts = neighbor_accounts
+    else:
+        relevant_merchants = {
+            mid for mid, accs in merchant_accounts.items()
+            if len(accs) >= 2
+        }
+        relevant_accounts = set()
+        for mid in relevant_merchants:
+            relevant_accounts.update(merchant_accounts[mid])
+
+    # Build node lists
+    nodes = []
+    for aid in relevant_accounts:
+        info = account_info[aid]
+        nodes.append({
+            "id": aid,
+            "type": "account",
+            "label": f"...{aid[-6:]}" if len(aid) > 6 else aid,
+            "flagged": info["flagged"],
+            "txn_count": info["txn_count"],
+            "total_amount": round(info["total_amount"], 2),
+        })
+
+    for mid in relevant_merchants:
+        info = merchant_info.get(mid, {})
+        nodes.append({
+            "id": mid,
+            "type": "merchant",
+            "label": info.get("label", mid),
+            "category": info.get("category", "Unknown"),
+            "flagged": mid in flagged_merchants,
+            "account_count": len(merchant_accounts[mid]),
+        })
+
+    # Filter edges to only include relevant nodes
+    filtered_edges = [
+        e for e in edge_list
+        if e["source"] in relevant_accounts and e["target"] in relevant_merchants
+    ]
+
+    return {
+        "nodes": nodes,
+        "edges": filtered_edges,
+        "total_accounts": len(relevant_accounts),
+        "total_merchants": len(relevant_merchants),
+    }
 
 
 @app.get("/api/cache/velocity/{account_id}")

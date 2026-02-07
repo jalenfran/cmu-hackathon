@@ -21,8 +21,11 @@ export interface AlertEvent {
   transaction: TransactionEvent;
   risk_score: number;
   risk_factors: string[];
-  status: 'pending' | 'investigating' | 'blocked' | 'cleared' | 'flagged';
+  status: 'pending' | 'investigating' | 'blocked' | 'cleared' | 'flagged' | 'awaiting_review';
   agent_verdict: string | null;
+  review_status: 'awaiting_review' | 'resolved' | null;
+  human_override: string | null;
+  human_reason: string | null;
   timestamp: string;
 }
 

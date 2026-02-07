@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { AlertEvent, AgentTrace, KYCResult } from '../../types/events';
 import { formatCurrency, timeAgo, getRiskColor, getRiskLevel, getTraceColor, getTracePrefix } from '../../utils/formatters';
 import { Tile } from '../layout/Tile';
-import { ChevronDown, ChevronRight, Shield } from 'lucide-react';
+import { ChevronDown, ChevronRight, Shield, UserCheck, CheckCircle, XCircle } from 'lucide-react';
 import { API_URL } from '../../config';
 
 interface AlertPanelProps {
@@ -10,18 +10,102 @@ interface AlertPanelProps {
   agentTraces?: AgentTrace[];
 }
 
-function StatusBadge({ status }: { status: string }) {
+function StatusBadge({ status, reviewStatus }: { status: string; reviewStatus?: string | null }) {
   const colors: Record<string, string> = {
     pending: 'bg-yellow-900/50 text-yellow-400 border-yellow-500/30',
     investigating: 'bg-emerald-900/50 text-emerald-400 border-emerald-500/30',
     blocked: 'bg-red-900/50 text-red-400 border-red-500/30',
     cleared: 'bg-emerald-900/50 text-emerald-400 border-emerald-500/30',
     flagged: 'bg-amber-900/50 text-amber-400 border-amber-500/30',
+    awaiting_review: 'bg-purple-900/50 text-purple-400 border-purple-500/30 animate-pulse',
   };
+
+  const label = status === 'awaiting_review' ? 'AWAITING REVIEW' : status.toUpperCase();
+
+  // After human review: show the final status + a small "by human" tag
+  const isHumanResolved = reviewStatus === 'resolved';
+
   return (
-    <span className={`text-xs px-2 py-0.5 rounded-full border ${colors[status] || colors.pending}`}>
-      {status.toUpperCase()}
-    </span>
+    <div className="flex items-center gap-1.5">
+      <span className={`text-xs px-2 py-0.5 rounded-full border ${colors[status] || colors.pending}`}>
+        {label}
+      </span>
+      {isHumanResolved && (
+        <span className="text-xs px-1.5 py-0.5 rounded-full border bg-blue-900/40 text-blue-400 border-blue-500/30 flex items-center gap-0.5">
+          <UserCheck size={9} /> HUMAN
+        </span>
+      )}
+    </div>
+  );
+}
+
+function HumanReviewPanel({ alert }: { alert: AlertEvent }) {
+  const [reason, setReason] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+
+  const submitDecision = async (decision: 'blocked' | 'cleared') => {
+    setSubmitting(true);
+    try {
+      await fetch(`${API_URL}/api/alerts/${alert.id}/review`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'override',
+          override_action: decision,
+          reason: reason || undefined,
+        }),
+      });
+    } catch (e) {
+      console.error('Failed to submit review:', e);
+    }
+    setSubmitting(false);
+    setReason('');
+  };
+
+  return (
+    <div className="mt-2 p-3 bg-purple-950/40 border border-purple-500/30 rounded-lg space-y-2.5" onClick={(e) => e.stopPropagation()}>
+      <div className="flex items-center gap-1.5 text-purple-300 text-xs font-bold uppercase tracking-wider">
+        <UserCheck size={12} />
+        Human Decision Required
+      </div>
+      <p className="text-xs text-gray-400">
+        The AI agent is unsure. Review the evidence above and decide:
+      </p>
+
+      <input
+        type="text"
+        placeholder="Reason (optional)"
+        value={reason}
+        onChange={(e) => setReason(e.target.value)}
+        className="w-full px-2 py-1 text-xs bg-gray-900/80 text-gray-300 border border-gray-700/50 rounded
+          placeholder-gray-600 focus:outline-none focus:border-purple-500/50"
+      />
+
+      <div className="flex gap-2">
+        <button
+          onClick={() => submitDecision('blocked')}
+          disabled={submitting}
+          className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-md text-xs font-bold
+            bg-red-900/50 text-red-400 border border-red-500/40
+            hover:bg-red-800/60 hover:border-red-400/60 transition-all
+            disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          <XCircle size={13} />
+          {submitting ? '...' : 'Block Account'}
+        </button>
+        <button
+          onClick={() => submitDecision('cleared')}
+          disabled={submitting}
+          className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-md text-xs font-bold
+            bg-emerald-900/50 text-emerald-400 border border-emerald-500/40
+            hover:bg-emerald-800/60 hover:border-emerald-400/60 transition-all
+            disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          <CheckCircle size={13} />
+          {submitting ? '...' : 'Clear Transaction'}
+        </button>
+      </div>
+    </div>
   );
 }
 
@@ -94,7 +178,7 @@ export function AlertPanel({ alerts, agentTraces = [] }: AlertPanelProps) {
                     {alert.transaction.merchant_name}
                   </span>
                 </div>
-                <StatusBadge status={alert.status} />
+                <StatusBadge status={alert.status} reviewStatus={alert.review_status} />
               </div>
 
               <div className="flex items-center justify-between">
@@ -200,6 +284,22 @@ export function AlertPanel({ alerts, agentTraces = [] }: AlertPanelProps) {
                           </div>
                         ))}
                       </div>
+                    </div>
+                  )}
+
+                  {/* HITL: Human Review Panel - shown when awaiting review */}
+                  {alert.status === 'awaiting_review' && alert.review_status !== 'resolved' && (
+                    <HumanReviewPanel alert={alert} />
+                  )}
+
+                  {/* Human review result */}
+                  {alert.review_status === 'resolved' && alert.human_reason && (
+                    <div className="text-xs rounded p-2 border-l-2 bg-blue-900/20 border-blue-500 text-blue-300">
+                      <div className="font-semibold mb-0.5 flex items-center gap-1">
+                        <UserCheck size={10} />
+                        Human Decision: {alert.human_override?.toUpperCase()}
+                      </div>
+                      <span className="text-gray-400">{alert.human_reason}</span>
                     </div>
                   )}
                 </div>

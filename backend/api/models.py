@@ -28,9 +28,18 @@ class AlertEvent(BaseModel):
     transaction: TransactionEvent
     risk_score: float
     risk_factors: list[str]
-    status: str = "pending"  # pending, investigating, blocked, cleared
+    status: str = "pending"  # pending, investigating, blocked, cleared, awaiting_review
     agent_verdict: Optional[str] = None
+    review_status: Optional[str] = None  # awaiting_review, confirmed, overridden
+    human_override: Optional[str] = None  # blocked, cleared (the human's chosen action)
+    human_reason: Optional[str] = None
     timestamp: str
+
+
+class AlertReviewRequest(BaseModel):
+    action: str  # "confirm" or "override"
+    override_action: Optional[str] = None  # "blocked" or "cleared" (required if action=override)
+    reason: Optional[str] = None
 
 
 class AgentTrace(BaseModel):

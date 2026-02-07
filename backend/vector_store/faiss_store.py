@@ -276,21 +276,40 @@ class TransactionVectorStore:
 
     # --- Investigation Memory ---
 
-    def upsert_investigation(self, alert_id: str, verdict: str, summary: str, txn: dict):
-        """Store an investigation verdict for future reference."""
+    def upsert_investigation(
+        self,
+        alert_id: str,
+        verdict: str,
+        summary: str,
+        txn: dict,
+        verdict_source: str = "agent",
+    ):
+        """Store an investigation verdict for future reference.
+
+        Args:
+            alert_id: The alert that was investigated.
+            verdict: The final verdict (blocked, cleared, flagged).
+            summary: Human-readable explanation of the decision.
+            txn: The transaction data associated with the alert.
+            verdict_source: Who made the decision — "agent" or "human".
+                Human verdicts are weighted higher in similarity search
+                results so the system learns from human corrections.
+        """
         if not self._enabled:
             return
 
         try:
+            source_label = "Human analyst" if verdict_source == "human" else "AI agent"
             text = (
                 f"Investigation of {self.transaction_to_text(txn)}. "
-                f"Verdict: {verdict}. {summary}"
+                f"Verdict: {verdict} (by {source_label}). {summary}"
             )
             embedding = self._embed(text)
 
             metadata = {
                 "alert_id": alert_id,
                 "verdict": verdict,
+                "verdict_source": verdict_source,
                 "summary": summary[:500],
                 "amount": float(txn.get("amount", 0)),
                 "category": txn.get("category", ""),
@@ -303,6 +322,10 @@ class TransactionVectorStore:
             self._inv_index.add(embedding.reshape(1, -1))
             self._inv_metadata.append(metadata)
             self._inv_ids.append(f"inv-{alert_id}")
+
+            logger.info(
+                f"FAISS: Stored {verdict_source} verdict for {alert_id}: {verdict}"
+            )
 
         except Exception as e:
             logger.warning(f"FAISS investigation upsert failed: {e}")
@@ -330,6 +353,7 @@ class TransactionVectorStore:
                     "alert_id": meta.get("alert_id", ""),
                     "similarity_score": round(float(score), 3),
                     "verdict": meta.get("verdict", ""),
+                    "verdict_source": meta.get("verdict_source", "agent"),
                     "summary": meta.get("summary", ""),
                     "merchant_name": meta.get("merchant_name", ""),
                     "amount": meta.get("amount", 0),
