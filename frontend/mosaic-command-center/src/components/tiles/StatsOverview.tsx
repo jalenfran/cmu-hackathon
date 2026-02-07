@@ -110,15 +110,15 @@ export function StatsOverview({ stats }: StatsOverviewProps) {
         icon={<Activity size={18} />}
         label="Transactions"
         value={stats.total_transactions.toLocaleString()}
-        color="#06b6d4"
-        glow="stat-glow-cyan"
+        color="#ffffff"
+        glow="stat-glow-white"
       />
       <StatCard
         icon={<AlertTriangle size={18} />}
         label="Flagged"
         value={stats.flagged_count.toString()}
-        color="#f59e0b"
-        glow="stat-glow-amber"
+        color="#9ca3af"
+        glow="stat-glow-white"
       />
       <StatCard
         icon={<ShieldOff size={18} />}
@@ -131,30 +131,30 @@ export function StatsOverview({ stats }: StatsOverviewProps) {
         icon={<ShieldCheck size={18} />}
         label="Cleared"
         value={stats.cleared_count.toString()}
-        color="#06b6d4"
-        glow="stat-glow-cyan"
+        color="#ffffff"
+        glow="stat-glow-white"
       />
       <StatCard
         icon={<Gavel size={18} />}
         label="Disputes"
         value={stats.disputes_filed.toString()}
-        color="#f59e0b"
-        glow="stat-glow-amber"
+        color="#9ca3af"
+        glow="stat-glow-white"
       />
       <StatCard
         icon={<DollarSign size={18} />}
         label="Money Saved"
         value={formatCurrency(stats.money_saved)}
-        color="#06b6d4"
-        glow="stat-glow-cyan"
+        color="#ffffff"
+        glow="stat-glow-white"
         large
       />
       <StatCard
         icon={<TrendingUp size={18} />}
         label="Volume"
         value={formatCurrency(stats.total_amount)}
-        color="#38bdf8"
-        glow="stat-glow-cyan"
+        color="#ffffff"
+        glow="stat-glow-white"
       />
     </div>
   );

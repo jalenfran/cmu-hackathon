@@ -77,3 +77,41 @@ export interface KYCResult {
   account_age_days: number;
   assessed_at: string;
 }
+
+// Fraud network visualization types (from /api/graph/network)
+export interface GraphNode {
+  id: string;
+  type: 'account' | 'merchant';
+  label: string;
+  // Account fields
+  status?: string;           // blocked | flagged | awaiting_review
+  alert_count?: number;
+  total_amount?: number;
+  // Merchant fields
+  merchant_id?: string;
+  category?: string;
+  city?: string;
+  country?: string;
+  fraud_count?: number;
+  total_fraud_amount?: number;
+  shared_accounts?: number;
+  is_ring_node?: boolean;
+}
+
+export interface GraphEdge {
+  source: string;
+  target: string;
+  amount: number;
+  status: string;             // blocked | flagged | awaiting_review
+  confidence: number | null;
+  risk_score: number;
+  alert_id: string;
+}
+
+export interface GraphNetworkResponse {
+  nodes: GraphNode[];
+  edges: GraphEdge[];
+  total_accounts: number;
+  total_merchants: number;
+  ring_merchants: number;
+}

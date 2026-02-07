@@ -24,14 +24,14 @@ function RiskBar({ score }: { score: number }) {
 
 export function TransactionFeed({ transactions }: TransactionFeedProps) {
   const liveBadge = (
-    <div className="flex items-center gap-1.5 text-xs text-cyan-400">
-      <span className="w-1.5 h-1.5 bg-cyan-400 rounded-full animate-pulse" />
+    <div className="flex items-center gap-1.5 text-xs text-white/70">
+      <span className="w-1.5 h-1.5 bg-white rounded-full animate-pulse" />
       LIVE
     </div>
   );
 
   return (
-    <Tile title="Live Transactions" className="col-span-2" accentColor="#06b6d4" badge={liveBadge}>
+    <Tile title="Live Transactions" className="row-span-2" accentColor="#ffffff" badge={liveBadge}>
       <div className="overflow-y-auto h-full space-y-1 pr-1 scrollbar-thin">
         {transactions.length === 0 && (
           <LoadingSpinner label="Waiting for transactions..." />
@@ -41,7 +41,7 @@ export function TransactionFeed({ transactions }: TransactionFeedProps) {
             key={txn.id + i}
             className={`flex items-center gap-2.5 px-3 py-2 rounded-xl transition-all duration-300 ${
               txn.is_anomaly
-                ? 'bg-red-950/40 border border-red-500/30'
+                ? 'bg-red-950/15 border border-red-900/20'
                 : 'bg-gray-800/20 border border-transparent hover:bg-gray-800/40 hover:border-gray-700/30'
             }`}
             style={{
@@ -60,7 +60,7 @@ export function TransactionFeed({ transactions }: TransactionFeedProps) {
             <RiskBar score={txn.risk_score} />
 
             {/* Amount */}
-            <div className={`text-sm font-mono font-bold tabular-nums ${txn.is_anomaly ? 'text-red-400' : 'text-white'}`}>
+            <div className={`text-sm font-mono font-bold tabular-nums ${txn.is_anomaly ? 'text-red-400/60' : 'text-white'}`}>
               {formatCurrency(txn.amount)}
             </div>
 

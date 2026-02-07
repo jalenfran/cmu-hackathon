@@ -714,17 +714,17 @@ async def _run_demo_sequence():
         # Curated rounds — each round is a themed burst of activity
         rounds = [
             # Round 1: International fraud blitz
-            {"frauds": [0, 1, 7], "dispute": True, "pace": (4, 7)},
+            {"frauds": [0, 1, 7], "dispute": True, "pace": (6, 10)},
             # Round 2: Financial crimes
-            {"frauds": [4, 8, 2], "dispute": False, "pace": (5, 8)},
+            {"frauds": [4, 8, 2], "dispute": False, "pace": (7, 12)},
             # Round 3: Luxury + dispute wave
-            {"frauds": [11, 5], "dispute": True, "pace": (3, 6)},
+            {"frauds": [11, 5], "dispute": True, "pace": (5, 9)},
             # Round 4: Rapid fire
-            {"frauds": [3, 10, 6, 12], "dispute": True, "pace": (2, 4)},
+            {"frauds": [3, 10, 6, 12], "dispute": True, "pace": (5, 8)},
             # Round 5: High-value targets
-            {"frauds": [9, 13, 8], "dispute": False, "pace": (4, 7)},
+            {"frauds": [9, 13, 8], "dispute": False, "pace": (6, 10)},
             # Round 6: Mixed chaos — everything at once
-            {"frauds": [0, 7, 4, 11], "dispute": True, "pace": (2, 5)},
+            {"frauds": [0, 7, 4, 11], "dispute": True, "pace": (5, 8)},
         ]
 
         round_idx = 0
@@ -880,114 +880,96 @@ async def get_fraud_ring(account_id: str):
 
 
 @app.get("/api/graph/network")
-async def get_fraud_network(account_id: str | None = None):
-    """Build a bipartite graph of accounts <-> merchants from recent transactions.
+async def get_fraud_network():
+    """Build a fraud-only network graph from confirmed blocked/flagged alerts.
 
-    Returns nodes (accounts and merchants) and edges (transactions) for
-    fraud network visualization. Only includes merchants shared by 2+ accounts
-    to highlight interesting connections. Flagged accounts/merchants are marked.
-
-    Optionally pass ?account_id=X to focus on a specific account's neighborhood.
+    Only includes accounts and merchants that have been involved in confirmed
+    fraud (blocked by AI or flagged for human review). Shows how fraudulent
+    accounts connect through shared merchants, with real merchant IDs, amounts,
+    verdict status, and confidence scores.
     """
     from collections import defaultdict
 
-    # Build merchant -> set of accounts mapping
-    merchant_accounts: dict[str, set[str]] = defaultdict(set)
-    merchant_info: dict[str, dict] = {}
-    account_info: dict[str, dict] = defaultdict(lambda: {"txn_count": 0, "flagged": False, "total_amount": 0.0})
-    edge_list: list[dict] = []
+    # Collect fraud-confirmed data from alert buffer
+    # Only include alerts that have a verdict (blocked, flagged, awaiting_review)
+    fraud_edges: list[dict] = []
+    fraud_accounts: dict[str, dict] = {}
+    fraud_merchants: dict[str, dict] = {}
+    merchant_fraud_accounts: dict[str, set[str]] = defaultdict(set)
 
-    # Gather flagged account/merchant IDs from alerts
-    flagged_accounts: set[str] = set()
-    flagged_merchants: set[str] = set()
     for alert_dict in alert_buffer:
-        txn = alert_dict.get("transaction", {})
-        flagged_accounts.add(txn.get("account_id", ""))
-        flagged_merchants.add(txn.get("merchant_id", ""))
+        status = alert_dict.get("status", "")
+        # Only show confirmed fraud: blocked, flagged, or awaiting human review
+        if status not in ("blocked", "flagged", "awaiting_review"):
+            continue
 
-    # Process transactions
-    for txn_dict in transaction_buffer:
-        aid = txn_dict.get("account_id", "")
-        mid = txn_dict.get("merchant_id", "")
+        txn = alert_dict.get("transaction", {})
+        aid = txn.get("account_id", "")
+        mid = txn.get("merchant_id", "")
         if not aid or not mid:
             continue
 
-        merchant_accounts[mid].add(aid)
+        merchant_fraud_accounts[mid].add(aid)
 
-        if mid not in merchant_info:
-            merchant_info[mid] = {
-                "label": txn_dict.get("merchant_name", mid),
-                "category": txn_dict.get("category", "Unknown"),
+        # Build/update account node info
+        if aid not in fraud_accounts:
+            fraud_accounts[aid] = {
+                "id": aid,
+                "type": "account",
+                "label": f"...{aid[-6:]}" if len(aid) > 6 else aid,
+                "status": status,
+                "alert_count": 0,
+                "total_amount": 0.0,
             }
+        fraud_accounts[aid]["alert_count"] += 1
+        fraud_accounts[aid]["total_amount"] += txn.get("amount", 0)
+        # Escalate status: blocked > awaiting_review > flagged
+        if status == "blocked":
+            fraud_accounts[aid]["status"] = "blocked"
+        elif status == "awaiting_review" and fraud_accounts[aid]["status"] != "blocked":
+            fraud_accounts[aid]["status"] = "awaiting_review"
 
-        account_info[aid]["txn_count"] += 1
-        account_info[aid]["total_amount"] += txn_dict.get("amount", 0)
-        if aid in flagged_accounts:
-            account_info[aid]["flagged"] = True
+        # Build/update merchant node info
+        if mid not in fraud_merchants:
+            fraud_merchants[mid] = {
+                "id": mid,
+                "type": "merchant",
+                "label": txn.get("merchant_name", mid),
+                "merchant_id": mid,
+                "category": txn.get("category", "Unknown"),
+                "city": txn.get("city", ""),
+                "country": txn.get("country", ""),
+                "fraud_count": 0,
+                "total_fraud_amount": 0.0,
+            }
+        fraud_merchants[mid]["fraud_count"] += 1
+        fraud_merchants[mid]["total_fraud_amount"] += txn.get("amount", 0)
 
-        edge_list.append({
+        # Build edge
+        fraud_edges.append({
             "source": aid,
             "target": mid,
-            "amount": txn_dict.get("amount", 0),
-            "is_anomaly": txn_dict.get("is_anomaly", False),
+            "amount": round(txn.get("amount", 0), 2),
+            "status": status,
+            "confidence": alert_dict.get("confidence_score"),
+            "risk_score": round(txn.get("risk_score", 0), 2),
+            "alert_id": alert_dict.get("id", ""),
         })
 
-    # Filter: only keep merchants shared by 2+ accounts (interesting connections)
-    # If focusing on a single account, include all its merchants
-    if account_id:
-        relevant_merchants = {
-            mid for mid, accs in merchant_accounts.items()
-            if account_id in accs
-        }
-        # Also include merchants shared with neighbors
-        neighbor_accounts = set()
-        for mid in relevant_merchants:
-            neighbor_accounts.update(merchant_accounts[mid])
-        relevant_accounts = neighbor_accounts
-    else:
-        relevant_merchants = {
-            mid for mid, accs in merchant_accounts.items()
-            if len(accs) >= 2
-        }
-        relevant_accounts = set()
-        for mid in relevant_merchants:
-            relevant_accounts.update(merchant_accounts[mid])
+    # Mark merchants involved with multiple fraudulent accounts (fraud ring indicator)
+    for mid, info in fraud_merchants.items():
+        info["shared_accounts"] = len(merchant_fraud_accounts[mid])
+        info["is_ring_node"] = len(merchant_fraud_accounts[mid]) >= 2
 
-    # Build node lists
-    nodes = []
-    for aid in relevant_accounts:
-        info = account_info[aid]
-        nodes.append({
-            "id": aid,
-            "type": "account",
-            "label": f"...{aid[-6:]}" if len(aid) > 6 else aid,
-            "flagged": info["flagged"],
-            "txn_count": info["txn_count"],
-            "total_amount": round(info["total_amount"], 2),
-        })
-
-    for mid in relevant_merchants:
-        info = merchant_info.get(mid, {})
-        nodes.append({
-            "id": mid,
-            "type": "merchant",
-            "label": info.get("label", mid),
-            "category": info.get("category", "Unknown"),
-            "flagged": mid in flagged_merchants,
-            "account_count": len(merchant_accounts[mid]),
-        })
-
-    # Filter edges to only include relevant nodes
-    filtered_edges = [
-        e for e in edge_list
-        if e["source"] in relevant_accounts and e["target"] in relevant_merchants
-    ]
+    # Build node list
+    nodes = list(fraud_accounts.values()) + list(fraud_merchants.values())
 
     return {
         "nodes": nodes,
-        "edges": filtered_edges,
-        "total_accounts": len(relevant_accounts),
-        "total_merchants": len(relevant_merchants),
+        "edges": fraud_edges,
+        "total_accounts": len(fraud_accounts),
+        "total_merchants": len(fraud_merchants),
+        "ring_merchants": sum(1 for m in fraud_merchants.values() if m.get("is_ring_node")),
     }
 
 

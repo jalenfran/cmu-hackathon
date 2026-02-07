@@ -23,10 +23,10 @@ export function timeAgo(timestamp: string): string {
 }
 
 export function getRiskColor(score: number): string {
-  if (score >= 0.7) return '#ef4444'; // red
-  if (score >= 0.4) return '#f59e0b'; // amber
-  if (score >= 0.2) return '#eab308'; // yellow
-  return '#06b6d4'; // cyan
+  if (score >= 0.7) return '#ef4444'; // red — critical
+  if (score >= 0.4) return '#d1d5db'; // light gray — high
+  if (score >= 0.2) return '#9ca3af'; // gray — medium
+  return '#6b7280'; // dim gray — low risk
 }
 
 export function getRiskLevel(score: number): string {
@@ -38,11 +38,11 @@ export function getRiskLevel(score: number): string {
 
 export function getTraceColor(stepType: string): string {
   switch (stepType) {
-    case 'thinking': return '#a78bfa';  // purple — AI reasoning
-    case 'tool_call': return '#38bdf8'; // cyan — AI action
+    case 'thinking': return '#d1d5db';  // light gray — AI reasoning
+    case 'tool_call': return '#ffffff'; // white — AI action
     case 'tool_result': return '#6b7280'; // gray — data
-    case 'action': return '#22d3ee';    // cyan — decision
-    case 'verdict': return '#fbbf24';   // amber — final verdict
+    case 'action': return '#e5e7eb';    // light gray — decision
+    case 'verdict': return '#ffffff';   // white — final verdict
     default: return '#9ca3af';
   }
 }
@@ -60,8 +60,8 @@ export function getTracePrefix(stepType: string): string {
 
 export function getVerdictColor(action: string): string {
   if (action.includes('BLOCK')) return '#ef4444';
-  if (action.includes('CLEAR')) return '#06b6d4';
-  return '#f59e0b'; // FLAG_FOR_REVIEW
+  if (action.includes('CLEAR')) return '#22c55e';
+  return '#d1d5db'; // FLAG_FOR_REVIEW — monochrome
 }
 
 export function parseVerdict(content: string): {

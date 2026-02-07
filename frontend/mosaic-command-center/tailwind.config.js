@@ -5,15 +5,18 @@ module.exports = {
   ],
   theme: {
     extend: {
+      fontFamily: {
+        rajdhani: ['Rajdhani', 'sans-serif'],
+      },
       colors: {
         sentinel: {
-          bg: '#0a0a0f',
-          surface: '#0f0f19',
-          accent: '#10b981',
-          ai: '#38bdf8',
-          thinking: '#a78bfa',
+          bg: '#050505',
+          surface: '#0a0a0a',
+          accent: '#ffffff',
+          ai: '#ffffff',
+          thinking: '#d1d5db',
           danger: '#ef4444',
-          warning: '#f59e0b',
+          muted: '#9ca3af',
         }
       }
     },

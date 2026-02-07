@@ -4,7 +4,7 @@ import { BentoGrid } from './components/layout/BentoGrid';
 import { StatsOverview } from './components/tiles/StatsOverview';
 import { TransactionFeed } from './components/tiles/TransactionFeed';
 import { AlertPanel } from './components/tiles/AlertPanel';
-import { RiskChart } from './components/tiles/RiskChart';
+import { NetworkGraph } from './components/tiles/NetworkGraph';
 import { AgentConsole } from './components/tiles/AgentConsole';
 import { DisputePanel } from './components/tiles/DisputePanel';
 import { AccountActivity } from './components/tiles/AccountActivity';
@@ -124,12 +124,12 @@ function App() {
       <header className="relative z-10 h-16 flex items-center justify-between px-6 border-b border-gray-800/40 bg-gray-950/60 backdrop-blur-2xl header-glow">
         <div className="flex items-center gap-3">
           <div className="relative">
-            <Shield className="text-cyan-400" size={26} />
-            <div className="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 bg-cyan-400 rounded-full animate-pulse" />
+            <Shield className="text-white/70" size={26} />
+            <div className="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 bg-white rounded-full animate-pulse" />
           </div>
           <div>
             <h1 className="text-lg font-bold tracking-tight">
-              <span className="bg-gradient-to-r from-cyan-400 to-cyan-300 bg-clip-text text-transparent">
+              <span className="text-white font-rajdhani">
                 AEGIS
               </span>
             </h1>
@@ -154,7 +154,7 @@ function App() {
               className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold border transition-all ${
                 demoRunning
                   ? 'bg-red-900/40 text-red-400 border-red-500/40 hover:bg-red-800/50'
-                  : 'bg-cyan-900/40 text-cyan-400 border-cyan-500/40 hover:bg-cyan-800/50'
+                  : 'bg-white/5 text-white/70 border-white/15 hover:bg-white/10'
               }`}
             >
               <Zap size={12} />
@@ -164,7 +164,7 @@ function App() {
             {/* Fullscreen toggle */}
             <button
               onClick={toggleFullscreen}
-              className="flex items-center gap-1.5 px-2 py-1 rounded-full text-xs bg-gray-800/50 text-gray-400 border border-gray-700/30 hover:bg-cyan-900/30 hover:text-cyan-400 hover:border-cyan-500/30 transition-all"
+              className="flex items-center gap-1.5 px-2 py-1 rounded-full text-xs bg-gray-800/50 text-gray-400 border border-gray-700/30 hover:bg-white/5 hover:text-white/70 hover:border-white/10 transition-all"
               title={isFullscreen ? 'Exit fullscreen' : 'Enter fullscreen'}
             >
               {isFullscreen ? <Minimize size={12} /> : <Maximize size={12} />}
@@ -174,7 +174,7 @@ function App() {
             {/* Nessie API status */}
             <div className={`flex items-center gap-1.5 px-2 py-1 rounded-full text-xs ${
               nessieConnected
-                ? 'bg-cyan-900/30 text-cyan-400 border border-cyan-500/30'
+                ? 'bg-white/5 text-white/70 border border-white/10'
                 : 'bg-gray-800/50 text-gray-500 border border-gray-700/30'
             }`}>
               <Database size={10} />
@@ -186,8 +186,8 @@ function App() {
               onClick={() => setShowStatus(true)}
               className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs border transition-all cursor-pointer ${
                 allOnline
-                  ? 'bg-cyan-900/30 text-cyan-400 border-cyan-500/30 hover:bg-cyan-900/50'
-                  : 'bg-amber-900/30 text-amber-400 border-amber-500/30 hover:bg-amber-900/50'
+                  ? 'bg-white/5 text-white/70 border-white/10 hover:bg-white/8'
+                  : 'bg-red-900/30 text-red-400 border-red-500/30 hover:bg-red-900/50'
               }`}
             >
               <Server size={10} />
@@ -198,13 +198,13 @@ function App() {
             {/* Connection status */}
             <div className={`flex items-center gap-2 px-3 py-1 rounded-full text-xs ${
               isConnected
-                ? 'bg-cyan-900/30 text-cyan-400 border border-cyan-500/30'
+                ? 'bg-white/5 text-white/70 border border-white/10'
                 : 'bg-red-900/30 text-red-400 border border-red-500/30'
             }`}>
               {isConnected ? <Wifi size={12} /> : <WifiOff size={12} />}
               {isConnected ? (
                 <span className="flex items-center gap-1">
-                  <span className="w-1.5 h-1.5 bg-cyan-400 rounded-full animate-pulse" />
+                  <span className="w-1.5 h-1.5 bg-white rounded-full animate-pulse" />
                   LIVE
                 </span>
               ) : 'DISCONNECTED'}
@@ -218,15 +218,17 @@ function App() {
         {/* Row 1: Stats strip */}
         <StatsOverview stats={stats} />
 
-        {/* Row 2: Transaction feed + Alerts + Disputes */}
+        {/* Row 2-3 col 1: Transaction feed (row-span-2) */}
         <TransactionFeed transactions={transactions} />
+
+        {/* Row 2: Alerts + Disputes + Account Activity */}
         <AlertPanel alerts={alerts} agentTraces={agentTraces} activeInvestigationIds={activeInvestigationIds} />
         <DisputePanel disputes={disputes} />
-
-        {/* Row 3: Agent console + Risk chart + Account Activity */}
-        <AgentConsole traces={agentTraces} />
-        <RiskChart transactions={transactions} />
         <AccountActivity transactions={transactions} />
+
+        {/* Row 3: Agent console (col-span-2) + Network graph */}
+        <AgentConsole traces={agentTraces} />
+        <NetworkGraph />
       </BentoGrid>
 
       {/* Status Modal Overlay */}
@@ -249,14 +251,14 @@ function App() {
             {/* Modal header */}
             <div className="flex items-center justify-between px-6 py-4 border-b border-gray-700/30">
               <div className="flex items-center gap-3">
-                <Server size={18} className="text-cyan-400" />
+                <Server size={18} className="text-white/70" />
                 <h2 className="text-sm font-semibold uppercase tracking-wider text-gray-200">
                   Infrastructure Status
                 </h2>
                 <span className={`text-[10px] px-2 py-0.5 rounded-full font-mono border ${
                   allOnline
-                    ? 'bg-cyan-900/30 text-cyan-400 border-cyan-500/30'
-                    : 'bg-amber-900/30 text-amber-400 border-amber-500/30'
+                    ? 'bg-white/5 text-white/70 border-white/10'
+                    : 'bg-red-900/30 text-red-400 border-red-500/30'
                 }`}>
                   {serviceCount.online}/{serviceCount.total} ONLINE
                 </span>

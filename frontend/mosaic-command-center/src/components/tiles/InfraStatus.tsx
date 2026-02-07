@@ -43,8 +43,8 @@ function StatusRow({
       <div className="flex items-center gap-1.5">
         {connected ? (
           <>
-            <CheckCircle size={12} className="text-cyan-400" />
-            <span className="text-[10px] text-cyan-400 font-mono tracking-wider">
+            <CheckCircle size={12} className="text-white/70" />
+            <span className="text-[10px] text-white/70 font-mono tracking-wider">
               ONLINE
             </span>
           </>
@@ -85,37 +85,37 @@ export function InfraStatus() {
           icon: <Database size={14} />,
           label: 'Nessie API',
           connected: health.nessie_connected,
-          color: '#06b6d4',
+          color: '#ffffff',
         },
         {
           icon: <Cpu size={14} />,
           label: 'Anomaly Engine',
           connected: health.anomaly_engine,
-          color: '#f59e0b',
+          color: '#d1d5db',
         },
         {
           icon: <Search size={14} />,
           label: 'FAISS Vector Store',
           connected: health.vector_store_enabled,
-          color: '#a855f7',
+          color: '#d1d5db',
         },
         {
           icon: <GitBranch size={14} />,
           label: 'Neo4j Graph DB',
           connected: health.neo4j_connected,
-          color: '#3b82f6',
+          color: '#d1d5db',
         },
         {
           icon: <Zap size={14} />,
           label: 'Redis Cache',
           connected: health.redis_connected,
-          color: '#dc2626',
+          color: '#d1d5db',
         },
         {
           icon: <Server size={14} />,
           label: 'Redpanda Kafka',
           connected: health.producer_active,
-          color: '#ef4444',
+          color: '#d1d5db',
         },
       ]
     : [];
@@ -126,8 +126,8 @@ export function InfraStatus() {
     <span
       className={`text-[10px] px-1.5 py-0.5 rounded-full font-mono border ${
         onlineCount === services.length
-          ? 'bg-cyan-900/30 text-cyan-400 border-cyan-500/30'
-          : 'bg-amber-900/30 text-amber-400 border-amber-500/30'
+          ? 'bg-white/5 text-white/70 border-white/10'
+          : 'bg-red-900/30 text-red-400 border-red-500/30'
       }`}
     >
       {onlineCount}/{services.length}

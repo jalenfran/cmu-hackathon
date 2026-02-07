@@ -20,8 +20,8 @@ interface AccountSummary {
 }
 
 const KYC_COLORS: Record<string, string> = {
-  low: '#06b6d4',
-  medium: '#eab308',
+  low: '#9ca3af',
+  medium: '#d1d5db',
   high: '#ef4444',
   critical: '#dc2626',
 };
@@ -83,7 +83,7 @@ function KYCBadge({ accountId }: { accountId: string }) {
           </div>
           <div className="space-y-1 text-gray-400">
             <div>Location Familiar: {kyc.location_familiar ?
-              <span className="text-cyan-400">Yes</span> :
+              <span className="text-white/70">Yes</span> :
               <span className="text-red-400">No - New Location</span>}
             </div>
             {kyc.familiar_locations && kyc.familiar_locations.length > 0 && (
@@ -141,7 +141,7 @@ export function AccountActivity({ transactions }: AccountActivityProps) {
   }, [transactions]);
 
   return (
-    <Tile title="Account Activity" accentColor="#06b6d4">
+    <Tile title="Account Activity" accentColor="#ffffff">
       <div className="overflow-y-auto h-full space-y-1.5 pr-1 scrollbar-thin">
         {accounts.length === 0 && (
           <LoadingSpinner label="Loading accounts..." />
@@ -156,7 +156,7 @@ export function AccountActivity({ transactions }: AccountActivityProps) {
               <div
                 className={`flex items-center gap-2 px-3 py-2 rounded-lg text-xs cursor-pointer transition-all duration-200 ${
                   isExpanded
-                    ? 'bg-cyan-950/30 border border-cyan-500/30'
+                    ? 'bg-white/5 border border-white/10'
                     : acc.anomalyCount > 0
                       ? 'bg-red-950/20 border border-red-500/20 hover:border-red-500/30'
                       : 'bg-gray-800/30 border border-transparent hover:bg-gray-800/50 hover:border-gray-700/30'
@@ -167,7 +167,7 @@ export function AccountActivity({ transactions }: AccountActivityProps) {
                 <div className="flex items-center gap-2 flex-1 min-w-0">
                   {/* Expand chevron */}
                   {isExpanded
-                    ? <ChevronDown size={12} className="text-cyan-500 flex-shrink-0" />
+                    ? <ChevronDown size={12} className="text-white/50 flex-shrink-0" />
                     : <ChevronRight size={12} className="text-gray-500 flex-shrink-0" />
                   }
 
@@ -206,7 +206,7 @@ export function AccountActivity({ transactions }: AccountActivityProps) {
 
               {/* Expanded: Transaction list for this account */}
               {isExpanded && (
-                <div className="ml-4 mr-1 mt-1 mb-1 space-y-0.5 border-l-2 border-cyan-500/20 pl-2 animate-fade-up">
+                <div className="ml-4 mr-1 mt-1 mb-1 space-y-0.5 border-l-2 border-white/10 pl-2 animate-fade-up">
                   {/* Header row */}
                   <div className="flex items-center justify-between px-2 py-1">
                     <span className="text-[10px] text-gray-500 uppercase tracking-wider font-semibold">

@@ -12,7 +12,7 @@ body {
   font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  background: #050508;
+  background: #050505;
   color: #e5e7eb;
   overflow: hidden;
 }
@@ -24,9 +24,9 @@ code {
 /* === Subtle gradient background === */
 .bg-gradient-mesh {
   background:
-    radial-gradient(ellipse 80% 50% at 20% 40%, rgba(6, 182, 212, 0.04) 0%, transparent 60%),
-    radial-gradient(ellipse 60% 60% at 80% 20%, rgba(6, 182, 212, 0.03) 0%, transparent 60%),
-    linear-gradient(180deg, #050508 0%, #0a0a12 50%, #080810 100%);
+    radial-gradient(ellipse 80% 50% at 20% 40%, rgba(255, 255, 255, 0.02) 0%, transparent 60%),
+    radial-gradient(ellipse 60% 60% at 80% 20%, rgba(255, 255, 255, 0.015) 0%, transparent 60%),
+    linear-gradient(180deg, #050505 0%, #0a0a0a 50%, #080808 100%);
 }
 
 /* === Sleek scrollbars === */
@@ -98,23 +98,78 @@ code {
 }
 
 /* === Stat card glow effects === */
-.stat-glow-cyan { box-shadow: 0 0 20px -5px rgba(6, 182, 212, 0.15); }
+.stat-glow-white { box-shadow: 0 0 20px -5px rgba(255, 255, 255, 0.1); }
 .stat-glow-red { box-shadow: 0 0 20px -5px rgba(239, 68, 68, 0.12); }
-.stat-glow-amber { box-shadow: 0 0 20px -5px rgba(245, 158, 11, 0.12); }
 
 /* === Liquid glass tile effects === */
 
+/* Expanded tile backdrop — fade in */
+@keyframes backdropFadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
 
+.expanded-tile-backdrop {
+  animation: backdropFadeIn 0.25s ease-out;
+}
 
-/* Animated border glow — subtle cyan pulse */
+/* Expanded tile glass — scale up + blur entrance */
+@keyframes glassExpand {
+  from {
+    opacity: 0;
+    transform: scale(0.92);
+    filter: blur(8px);
+  }
+  60% {
+    opacity: 1;
+    filter: blur(0px);
+  }
+  to {
+    transform: scale(1);
+    filter: blur(0px);
+  }
+}
+
+.expanded-tile-glass {
+  animation: glassExpand 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* Liquid glass shimmer — slow ambient light sweep */
+@keyframes liquidShimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+.expanded-tile-glass::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: linear-gradient(
+    105deg,
+    transparent 0%,
+    transparent 40%,
+    rgba(255, 255, 255, 0.03) 45%,
+    rgba(255, 255, 255, 0.02) 50%,
+    rgba(255, 255, 255, 0.03) 55%,
+    transparent 60%,
+    transparent 100%
+  );
+  background-size: 200% 100%;
+  animation: liquidShimmer 8s ease-in-out infinite;
+  pointer-events: none;
+  z-index: 1;
+}
+
+/* Animated border glow — subtle white pulse */
 @keyframes borderGlow {
   0%, 100% {
     border-color: rgba(107, 114, 128, 0.2);
     box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
   }
   50% {
-    border-color: rgba(6, 182, 212, 0.15);
-    box-shadow: 0 8px 32px rgba(6, 182, 212, 0.06);
+    border-color: rgba(255, 255, 255, 0.1);
+    box-shadow: 0 8px 32px rgba(255, 255, 255, 0.03);
   }
 }
 

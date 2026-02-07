@@ -14,7 +14,7 @@ interface AlertPanelProps {
 
 function ConfidenceBadge({ score }: { score: number | null }) {
   if (score == null) return null;
-  const color = score >= 75 ? '#06b6d4' : score >= 50 ? '#f59e0b' : '#ef4444';
+  const color = score >= 75 ? '#d1d5db' : score >= 50 ? '#9ca3af' : '#ef4444';
   return (
     <span
       className="text-[10px] px-1.5 py-0.5 rounded-full font-bold font-mono border"
@@ -31,12 +31,12 @@ function ConfidenceBadge({ score }: { score: number | null }) {
 
 function StatusBadge({ status, reviewStatus, confidence }: { status: string; reviewStatus?: string | null; confidence?: number | null }) {
   const colors: Record<string, string> = {
-    pending: 'bg-yellow-900/50 text-yellow-400 border-yellow-500/30',
-    investigating: 'bg-cyan-900/50 text-cyan-400 border-cyan-500/30',
+    pending: 'bg-gray-800/50 text-gray-400 border-gray-600/30',
+    investigating: 'bg-gray-800/40 text-gray-300 border-gray-600/20',
     blocked: 'bg-red-900/50 text-red-400 border-red-500/30',
-    cleared: 'bg-cyan-900/50 text-cyan-400 border-cyan-500/30',
-    flagged: 'bg-amber-900/50 text-amber-400 border-amber-500/30',
-    awaiting_review: 'bg-purple-900/50 text-purple-400 border-purple-500/30 animate-pulse',
+    cleared: 'bg-gray-800/40 text-gray-300 border-gray-600/20',
+    flagged: 'bg-gray-800/50 text-gray-400 border-gray-600/30',
+    awaiting_review: 'bg-gray-700/50 text-white border-gray-500/40 animate-pulse',
   };
 
   const label = status === 'awaiting_review' ? 'AWAITING REVIEW' : status.toUpperCase();
@@ -53,7 +53,7 @@ function StatusBadge({ status, reviewStatus, confidence }: { status: string; rev
         <ConfidenceBadge score={confidence} />
       )}
       {isHumanResolved && (
-        <span className="text-xs px-1.5 py-0.5 rounded-full border bg-blue-900/40 text-blue-400 border-blue-500/30 flex items-center gap-0.5">
+        <span className="text-xs px-1.5 py-0.5 rounded-full border bg-gray-700/40 text-gray-300 border-gray-500/30 flex items-center gap-0.5">
           <UserCheck size={9} /> HUMAN
         </span>
       )}
@@ -92,8 +92,8 @@ function HumanReviewPanel({ alert }: { alert: AlertEvent }) {
     : null;
 
   return (
-    <div className="mt-2 p-3 bg-purple-950/40 border border-purple-500/30 rounded-lg space-y-2.5" onClick={(e) => e.stopPropagation()}>
-      <div className="flex items-center gap-1.5 text-purple-300 text-xs font-bold uppercase tracking-wider">
+    <div className="mt-2 p-3 bg-gray-800/50 border border-gray-500/30 rounded-lg space-y-2.5" onClick={(e) => e.stopPropagation()}>
+      <div className="flex items-center gap-1.5 text-gray-200 text-xs font-bold uppercase tracking-wider">
         <UserCheck size={12} />
         Human Decision Required
       </div>
@@ -101,7 +101,7 @@ function HumanReviewPanel({ alert }: { alert: AlertEvent }) {
       {/* Show agent's full reasoning prominently */}
       {alert.agent_verdict && (
         <div className="p-2.5 bg-gray-900/60 rounded-lg border border-gray-700/30 space-y-1.5">
-          <div className="flex items-center gap-1.5 text-xs text-cyan-400 font-semibold">
+          <div className="flex items-center gap-1.5 text-xs text-white/70 font-semibold">
             <Brain size={11} />
             AI Agent Analysis
           </div>
@@ -117,7 +117,7 @@ function HumanReviewPanel({ alert }: { alert: AlertEvent }) {
         value={reason}
         onChange={(e) => setReason(e.target.value)}
         className="w-full px-2 py-1 text-xs bg-gray-900/80 text-gray-300 border border-gray-700/50 rounded
-          placeholder-gray-600 focus:outline-none focus:border-purple-500/50"
+          placeholder-gray-600 focus:outline-none focus:border-gray-500/50"
       />
 
       <div className="flex gap-2">
@@ -137,8 +137,8 @@ function HumanReviewPanel({ alert }: { alert: AlertEvent }) {
             onClick={() => submitDecision(agentRecommendation as 'blocked' | 'cleared')}
             disabled={submitting}
             className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-md text-xs font-bold
-              bg-cyan-900/50 text-cyan-400 border border-cyan-500/40
-              hover:bg-cyan-800/60 hover:border-cyan-400/60 transition-all
+              bg-white/8 text-white/70 border border-white/15
+              hover:bg-white/10 hover:border-white/20 transition-all
               disabled:opacity-50 disabled:cursor-not-allowed"
           >
             <Brain size={13} />
@@ -149,8 +149,8 @@ function HumanReviewPanel({ alert }: { alert: AlertEvent }) {
           onClick={() => submitDecision('cleared')}
           disabled={submitting}
           className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-md text-xs font-bold
-            bg-cyan-900/50 text-cyan-400 border border-cyan-500/40
-            hover:bg-cyan-800/60 hover:border-cyan-400/60 transition-all
+            bg-white/8 text-white/70 border border-white/15
+            hover:bg-white/10 hover:border-white/20 transition-all
             disabled:opacity-50 disabled:cursor-not-allowed"
         >
           <CheckCircle size={13} />
@@ -174,8 +174,8 @@ function AlertKYC({ accountId }: { accountId: string }) {
   if (!kyc) return null;
 
   const kycColors: Record<string, string> = {
-    low: 'text-cyan-400 border-cyan-500/30 bg-cyan-900/20',
-    medium: 'text-yellow-400 border-yellow-500/30 bg-yellow-900/20',
+    low: 'text-gray-300 border-gray-600/20 bg-gray-800/30',
+    medium: 'text-gray-300 border-gray-500/30 bg-gray-800/40',
     high: 'text-red-400 border-red-500/30 bg-red-900/20',
     critical: 'text-red-400 border-red-500/50 bg-red-900/30',
   };
@@ -222,7 +222,7 @@ export function AlertPanel({ alerts, agentTraces = [], activeInvestigationIds }:
   const hiddenCount = alerts.length > 15 ? alerts.length - 15 : 0;
 
   return (
-    <Tile title="Anomaly Alerts" accentColor="#06b6d4">
+    <Tile title="Anomaly Alerts" accentColor="#ffffff">
       <div className="overflow-y-auto h-full space-y-2 pr-1 scrollbar-thin">
         {alerts.length === 0 && (
           <LoadingSpinner label="Monitoring for anomalies..." />
@@ -257,7 +257,7 @@ export function AlertPanel({ alerts, agentTraces = [], activeInvestigationIds }:
               key={alert.id}
               className={`bg-red-950/30 border rounded-lg p-3 space-y-2 cursor-pointer transition-all ${
                 isAwaitingReview
-                  ? 'border-purple-500/40 ring-2 ring-purple-500/20'
+                  ? 'border-gray-400/40 ring-2 ring-white/10'
                   : isExpanded ? 'border-red-500/40' : 'border-red-500/20 hover:border-red-500/30'
               } ${isBeingInvestigated ? 'investigation-focus' : ''}`}
               style={{
@@ -354,8 +354,8 @@ export function AlertPanel({ alerts, agentTraces = [], activeInvestigationIds }:
 
                   {/* Agent verdict */}
                   {alert.agent_verdict && alert.status !== 'awaiting_review' && (
-                    <div className="text-xs bg-gray-800/50 rounded p-2 text-gray-300 border-l-2 border-cyan-500">
-                      <div className="text-cyan-400 font-semibold mb-1 flex items-center gap-1.5">
+                    <div className="text-xs bg-gray-800/50 rounded p-2 text-gray-300 border-l-2 border-white/30">
+                      <div className="text-white/70 font-semibold mb-1 flex items-center gap-1.5">
                         AI Agent Verdict
                         {alert.confidence_score != null && (
                           <ConfidenceBadge score={alert.confidence_score} />
@@ -396,7 +396,7 @@ export function AlertPanel({ alerts, agentTraces = [], activeInvestigationIds }:
 
                   {/* Human review result */}
                   {alert.review_status === 'resolved' && alert.human_reason && (
-                    <div className="text-xs rounded p-2 border-l-2 bg-blue-900/20 border-blue-500 text-blue-300">
+                    <div className="text-xs rounded p-2 border-l-2 bg-gray-800/40 border-gray-400 text-gray-300">
                       <div className="font-semibold mb-0.5 flex items-center gap-1">
                         <UserCheck size={10} />
                         Human Decision: {alert.human_override?.toUpperCase()}

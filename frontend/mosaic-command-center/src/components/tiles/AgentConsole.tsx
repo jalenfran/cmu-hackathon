@@ -24,9 +24,11 @@ function StepIcon({ type }: { type: string }) {
 export function AgentConsole({ traces }: AgentConsoleProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const [selectedTab, setSelectedTab] = useState<string | null>(null);
+  const [dismissedTabs, setDismissedTabs] = useState<Set<string>>(new Set());
+  const dismissTimers = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
 
-  // Group traces by alert_id into investigations
-  const investigations = useMemo(() => {
+  // Group traces by alert_id into ALL investigations (including dismissed)
+  const allInvestigations = useMemo(() => {
     const groups = new Map<string, AgentTrace[]>();
     for (const trace of traces) {
       const existing = groups.get(trace.alert_id) || [];
@@ -35,6 +37,35 @@ export function AgentConsole({ traces }: AgentConsoleProps) {
     }
     return Array.from(groups.entries());
   }, [traces]);
+
+  // Auto-dismiss completed tabs after 15 seconds
+  useEffect(() => {
+    for (const [alertId, alertTraces] of allInvestigations) {
+      const hasVerdict = alertTraces.some(t => t.step_type === 'verdict');
+      if (hasVerdict && !dismissedTabs.has(alertId) && !dismissTimers.current.has(alertId)) {
+        const timer = setTimeout(() => {
+          setDismissedTabs(prev => {
+            const next = new Set(prev);
+            next.add(alertId);
+            return next;
+          });
+          dismissTimers.current.delete(alertId);
+        }, 15000);
+        dismissTimers.current.set(alertId, timer);
+      }
+    }
+    // Cleanup timers on unmount
+    return () => {
+      dismissTimers.current.forEach(timer => clearTimeout(timer));
+    };
+  }, [allInvestigations, dismissedTabs]);
+
+  // Filter out dismissed tabs (but keep the currently selected one visible)
+  const investigations = useMemo(() => {
+    return allInvestigations.filter(
+      ([id]) => !dismissedTabs.has(id) || id === selectedTab
+    );
+  }, [allInvestigations, dismissedTabs, selectedTab]);
 
   // Auto-select tab: newest active investigation, or stay on current if still active
   useEffect(() => {
@@ -104,10 +135,10 @@ export function AgentConsole({ traces }: AgentConsoleProps) {
   const statusBadge = (
     <div className={`flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium ${
       activeCount > 0
-        ? 'bg-cyan-900/30 text-cyan-400 border border-cyan-500/30'
+        ? 'bg-white/5 text-white/70 border border-white/10'
         : 'bg-gray-800/50 text-gray-500 border border-gray-700/30'
     }`}>
-      <span className={`w-1.5 h-1.5 rounded-full ${activeCount > 0 ? 'bg-cyan-400 animate-pulse' : 'bg-gray-600'}`} />
+      <span className={`w-1.5 h-1.5 rounded-full ${activeCount > 0 ? 'bg-white animate-pulse' : 'bg-gray-600'}`} />
       {activeCount > 0
         ? (activeCount === 1
           ? (selectedIsActive && selectedStepInfo ? `Step ${selectedStepInfo.step}/${selectedStepInfo.total}` : 'ACTIVE')
@@ -126,7 +157,7 @@ export function AgentConsole({ traces }: AgentConsoleProps) {
     // Special verdict card rendering
     if (isVerdict) {
       const verdict = parseVerdict(displayContent);
-      const verdictColor = verdict ? getVerdictColor(verdict.action) : '#fbbf24';
+      const verdictColor = verdict ? getVerdictColor(verdict.action) : '#d1d5db';
       const scanClass = verdict?.action.includes('BLOCK') ? 'verdict-block'
         : verdict?.action.includes('CLEAR') ? 'verdict-clear' : 'verdict-flag';
 
@@ -226,7 +257,7 @@ export function AgentConsole({ traces }: AgentConsoleProps) {
       if (/VERIFIED|FEASIBLE|REGISTERED|SAFE/i.test(line)) {
         return (
           <span key={i} className="block">
-            <span className="text-cyan-400">{line}</span>
+            <span className="text-white/70">{line}</span>
           </span>
         );
       }
@@ -246,7 +277,7 @@ export function AgentConsole({ traces }: AgentConsoleProps) {
   };
 
   return (
-    <Tile title="Agent Brain Trace" className="col-span-2" accentColor="#38bdf8" badge={statusBadge}>
+    <Tile title="Agent Brain Trace" className="col-span-2" accentColor="#ffffff" badge={statusBadge}>
       <div className="h-full flex flex-col">
         {/* Terminal window */}
         <div className="flex-1 rounded-xl overflow-hidden border border-gray-800/30 flex flex-col">
@@ -262,11 +293,11 @@ export function AgentConsole({ traces }: AgentConsoleProps) {
                     className="h-full rounded-full transition-all duration-500"
                     style={{
                       width: `${(selectedStepInfo.step / selectedStepInfo.total) * 100}%`,
-                      background: 'linear-gradient(90deg, #38bdf8, #a78bfa)',
+                      background: 'linear-gradient(90deg, #ffffff, #a1a1aa)',
                     }}
                   />
                 </div>
-                <span className="text-[10px] text-cyan-400/60 font-mono">{selectedStepInfo.step}/{selectedStepInfo.total}</span>
+                <span className="text-[10px] text-white/40 font-mono">{selectedStepInfo.step}/{selectedStepInfo.total}</span>
               </div>
             )}
           </div>
@@ -290,13 +321,13 @@ export function AgentConsole({ traces }: AgentConsoleProps) {
                     onClick={() => setSelectedTab(alertId)}
                     className={`flex items-center gap-1.5 px-3 py-1.5 text-[10px] font-mono whitespace-nowrap border-b-2 transition-all flex-shrink-0 ${
                       isSelected
-                        ? 'border-cyan-400 bg-cyan-900/10 text-gray-200'
+                        ? 'border-white/30 bg-white/5 text-gray-200'
                         : 'border-transparent text-gray-500 hover:text-gray-300 hover:bg-gray-800/30'
                     }`}
                   >
                     {/* Status dot */}
                     {isActiveInvestigation ? (
-                      <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-pulse flex-shrink-0" />
+                      <span className="w-1.5 h-1.5 rounded-full bg-white animate-pulse flex-shrink-0" />
                     ) : (
                       <span
                         className="w-1.5 h-1.5 rounded-full flex-shrink-0"
@@ -312,7 +343,7 @@ export function AgentConsole({ traces }: AgentConsoleProps) {
                       <span
                         className="text-[9px] px-1 py-0 rounded font-bold"
                         style={{
-                          color: verdictColor || '#fbbf24',
+                          color: verdictColor || '#d1d5db',
                           background: `${verdictColor}15`,
                         }}
                       >
@@ -332,7 +363,7 @@ export function AgentConsole({ traces }: AgentConsoleProps) {
           >
             {traces.length === 0 && (
               <div className="text-center py-6">
-                <pre className="text-cyan-500/30 text-[10px] leading-tight">{`\u256D\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u256E
+                <pre className="text-white/20 text-[10px] leading-tight">{`\u256D\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u256E
 \u2502  AEGIS AUTONOMOUS AGENT v2.1    \u2502
 \u2502  Model: Llama 3 \u00B7 ReAct Loop    \u2502
 \u2502  Status: MONITORING             \u2502
@@ -355,7 +386,7 @@ export function AgentConsole({ traces }: AgentConsoleProps) {
                 <span className="text-gray-700 flex-shrink-0 w-14 text-[10px]" />
                 <span className="flex-shrink-0" style={{ width: '18px' }} />
                 <span className="flex-shrink-0" style={{ width: '52px' }} />
-                <span className="text-cyan-500 cursor-blink" />
+                <span className="text-white cursor-blink" />
               </div>
             )}
           </div>
@@ -363,10 +394,10 @@ export function AgentConsole({ traces }: AgentConsoleProps) {
           {/* Bottom status bar */}
           <div className="flex items-center justify-between px-3 py-1.5 bg-gray-900/80 border-t border-gray-800/30 text-[10px] text-gray-600 font-mono">
             <span>
-              {activeCount > 0 && <><span className="text-cyan-400/60">{activeCount} active</span> &middot; </>}
+              {activeCount > 0 && <><span className="text-white/40">{activeCount} active</span> &middot; </>}
               {investigations.length} investigation{investigations.length !== 1 ? 's' : ''} &middot; {selectedTraces.length} traces
             </span>
-            <span className={activeCount > 0 ? 'text-cyan-400/60' : ''}>{activeCount > 0 ? 'ACTIVE' : 'STANDBY'}</span>
+            <span className={activeCount > 0 ? 'text-white/40' : ''}>{activeCount > 0 ? 'ACTIVE' : 'STANDBY'}</span>
           </div>
         </div>
       </div>

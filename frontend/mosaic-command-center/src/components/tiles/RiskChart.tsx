@@ -32,7 +32,7 @@ export function RiskChart({ transactions }: RiskChartProps) {
   ) : null;
 
   return (
-    <Tile title="Risk Timeline" accentColor="#06b6d4" badge={badge}>
+    <Tile title="Risk Timeline" accentColor="#ffffff" badge={badge}>
       <div className="h-full w-full">
         {chartData.length === 0 ? (
           <LoadingSpinner label="Collecting data..." />
@@ -42,8 +42,8 @@ export function RiskChart({ transactions }: RiskChartProps) {
               <defs>
                 <linearGradient id="riskGradient" x1="0" y1="0" x2="0" y2="1">
                   <stop offset="5%" stopColor="#ef4444" stopOpacity={0.4} />
-                  <stop offset="40%" stopColor="#06b6d4" stopOpacity={0.2} />
-                  <stop offset="95%" stopColor="#06b6d4" stopOpacity={0.02} />
+                  <stop offset="40%" stopColor="#ffffff" stopOpacity={0.2} />
+                  <stop offset="95%" stopColor="#ffffff" stopOpacity={0.02} />
                 </linearGradient>
                 <filter id="glow">
                   <feGaussianBlur stdDeviation="3" result="blur" />
@@ -100,7 +100,7 @@ export function RiskChart({ transactions }: RiskChartProps) {
               <Area
                 type="monotone"
                 dataKey="risk"
-                stroke="#06b6d4"
+                stroke="#ffffff"
                 strokeWidth={2}
                 fill="url(#riskGradient)"
                 animationDuration={300}
@@ -132,12 +132,12 @@ export function RiskChart({ transactions }: RiskChartProps) {
                       </g>
                     );
                   }
-                  // Small cyan dot for normal transactions
+                  // Small white dot for normal transactions
                   return (
                     <circle
                       key={`dot-${payload.index}`}
                       cx={cx} cy={cy} r={1.5}
-                      fill="#06b6d4"
+                      fill="#ffffff"
                       fillOpacity={0.3}
                     />
                   );
