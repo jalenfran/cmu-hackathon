@@ -33,7 +33,7 @@ export function Tile({ title, icon, className, children, accentColor, badge }: T
         <div className="flex items-center gap-2">
           {icon && <span className="text-lg">{icon}</span>}
           <h3
-            className="text-xs font-semibold uppercase tracking-[0.15em]"
+            className="text-xs font-semibold uppercase tracking-wider"
             style={{ color: accentColor || '#9ca3af' }}
           >
             {title}

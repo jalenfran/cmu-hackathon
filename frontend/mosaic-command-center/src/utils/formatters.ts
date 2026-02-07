@@ -26,7 +26,7 @@ export function getRiskColor(score: number): string {
   if (score >= 0.7) return '#ef4444'; // red
   if (score >= 0.4) return '#f59e0b'; // amber
   if (score >= 0.2) return '#eab308'; // yellow
-  return '#10b981'; // emerald
+  return '#06b6d4'; // cyan
 }
 
 export function getRiskLevel(score: number): string {
@@ -41,16 +41,10 @@ export function getTraceColor(stepType: string): string {
     case 'thinking': return '#a78bfa';  // purple — AI reasoning
     case 'tool_call': return '#38bdf8'; // cyan — AI action
     case 'tool_result': return '#6b7280'; // gray — data
-    case 'action': return '#34d399';    // emerald — decision
+    case 'action': return '#22d3ee';    // cyan — decision
     case 'verdict': return '#fbbf24';   // amber — final verdict
     default: return '#9ca3af';
   }
-}
-
-// Icons are rendered as JSX in AgentConsole.tsx using lucide-react, not here
-// This is kept for backwards compat but no longer used for display
-export function getTraceIcon(stepType: string): string {
-  return '';
 }
 
 export function getTracePrefix(stepType: string): string {
@@ -66,7 +60,7 @@ export function getTracePrefix(stepType: string): string {
 
 export function getVerdictColor(action: string): string {
   if (action.includes('BLOCK')) return '#ef4444';
-  if (action.includes('CLEAR')) return '#10b981';
+  if (action.includes('CLEAR')) return '#06b6d4';
   return '#f59e0b'; // FLAG_FOR_REVIEW
 }
 

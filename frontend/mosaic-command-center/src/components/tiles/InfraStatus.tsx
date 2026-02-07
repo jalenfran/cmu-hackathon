@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Tile } from '../layout/Tile';
+import { LoadingSpinner } from '../ui/LoadingSpinner';
 import { API_URL } from '../../config';
 import {
   Server,
@@ -42,8 +43,8 @@ function StatusRow({
       <div className="flex items-center gap-1.5">
         {connected ? (
           <>
-            <CheckCircle size={12} className="text-emerald-400" />
-            <span className="text-[10px] text-emerald-400 font-mono tracking-wider">
+            <CheckCircle size={12} className="text-cyan-400" />
+            <span className="text-[10px] text-cyan-400 font-mono tracking-wider">
               ONLINE
             </span>
           </>
@@ -84,7 +85,7 @@ export function InfraStatus() {
           icon: <Database size={14} />,
           label: 'Nessie API',
           connected: health.nessie_connected,
-          color: '#22c55e',
+          color: '#06b6d4',
         },
         {
           icon: <Cpu size={14} />,
@@ -125,7 +126,7 @@ export function InfraStatus() {
     <span
       className={`text-[10px] px-1.5 py-0.5 rounded-full font-mono border ${
         onlineCount === services.length
-          ? 'bg-emerald-900/30 text-emerald-400 border-emerald-500/30'
+          ? 'bg-cyan-900/30 text-cyan-400 border-cyan-500/30'
           : 'bg-amber-900/30 text-amber-400 border-amber-500/30'
       }`}
     >
@@ -142,10 +143,7 @@ export function InfraStatus() {
     >
       <div className="space-y-1.5 overflow-y-auto h-full pr-1">
         {!health && (
-          <div className="text-gray-500 text-sm text-center py-8 flex flex-col items-center gap-2">
-            <div className="w-5 h-5 border-2 border-emerald-500/50 border-t-transparent rounded-full animate-spin" />
-            Checking services...
-          </div>
+          <LoadingSpinner label="Checking services..." />
         )}
         {services.map((svc, i) => (
           <StatusRow key={i} {...svc} />

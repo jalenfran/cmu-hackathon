@@ -2,6 +2,7 @@ import React, { useMemo } from 'react';
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, ReferenceLine } from 'recharts';
 import { TransactionEvent } from '../../types/events';
 import { Tile } from '../layout/Tile';
+import { LoadingSpinner } from '../ui/LoadingSpinner';
 
 interface RiskChartProps {
   transactions: TransactionEvent[];
@@ -31,21 +32,18 @@ export function RiskChart({ transactions }: RiskChartProps) {
   ) : null;
 
   return (
-    <Tile title="Risk Timeline" accentColor="#10b981" badge={badge}>
+    <Tile title="Risk Timeline" accentColor="#06b6d4" badge={badge}>
       <div className="h-full w-full">
         {chartData.length === 0 ? (
-          <div className="text-gray-500 text-sm text-center py-8 flex flex-col items-center gap-2">
-            <div className="w-5 h-5 border-2 border-emerald-500/50 border-t-transparent rounded-full animate-spin" />
-            Collecting data...
-          </div>
+          <LoadingSpinner label="Collecting data..." />
         ) : (
           <ResponsiveContainer width="100%" height="100%">
             <AreaChart data={chartData}>
               <defs>
                 <linearGradient id="riskGradient" x1="0" y1="0" x2="0" y2="1">
                   <stop offset="5%" stopColor="#ef4444" stopOpacity={0.4} />
-                  <stop offset="40%" stopColor="#10b981" stopOpacity={0.2} />
-                  <stop offset="95%" stopColor="#10b981" stopOpacity={0.02} />
+                  <stop offset="40%" stopColor="#06b6d4" stopOpacity={0.2} />
+                  <stop offset="95%" stopColor="#06b6d4" stopOpacity={0.02} />
                 </linearGradient>
                 <filter id="glow">
                   <feGaussianBlur stdDeviation="3" result="blur" />
@@ -102,7 +100,7 @@ export function RiskChart({ transactions }: RiskChartProps) {
               <Area
                 type="monotone"
                 dataKey="risk"
-                stroke="#10b981"
+                stroke="#06b6d4"
                 strokeWidth={2}
                 fill="url(#riskGradient)"
                 animationDuration={300}
@@ -134,12 +132,12 @@ export function RiskChart({ transactions }: RiskChartProps) {
                       </g>
                     );
                   }
-                  // Small emerald dot for normal transactions
+                  // Small cyan dot for normal transactions
                   return (
                     <circle
                       key={`dot-${payload.index}`}
                       cx={cx} cy={cy} r={1.5}
-                      fill="#10b981"
+                      fill="#06b6d4"
                       fillOpacity={0.3}
                     />
                   );

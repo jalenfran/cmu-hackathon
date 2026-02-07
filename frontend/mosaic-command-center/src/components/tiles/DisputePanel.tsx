@@ -24,13 +24,13 @@ const STATUS_CONFIG: Record<string, { icon: React.ReactNode; color: string; bg: 
   },
   investigating: {
     icon: <Loader2 size={12} className="animate-spin" />,
-    color: '#10b981',
-    bg: 'bg-emerald-900/30 border-emerald-500/30',
+    color: '#06b6d4',
+    bg: 'bg-cyan-900/30 border-cyan-500/30',
   },
   approved: {
     icon: <CheckCircle size={12} />,
-    color: '#10b981',
-    bg: 'bg-emerald-900/30 border-emerald-500/30',
+    color: '#06b6d4',
+    bg: 'bg-cyan-900/30 border-cyan-500/30',
   },
   denied: {
     icon: <XCircle size={12} />,
@@ -46,11 +46,11 @@ const STATUS_CONFIG: Record<string, { icon: React.ReactNode; color: string; bg: 
 
 export function DisputePanel({ disputes }: DisputePanelProps) {
   return (
-    <Tile title="Customer Disputes" accentColor="#10b981">
+    <Tile title="Customer Disputes" accentColor="#06b6d4">
       <div className="overflow-y-auto h-full space-y-2 pr-1 scrollbar-thin">
         {disputes.length === 0 && (
           <div className="text-gray-500 text-sm text-center py-8 flex flex-col items-center gap-2">
-            <Gavel size={20} className="text-emerald-500/50" />
+            <Gavel size={20} className="text-cyan-500/50" />
             <span>No disputes filed yet</span>
             <span className="text-xs text-gray-600">Disputes appear when customers challenge transactions</span>
           </div>
@@ -64,9 +64,9 @@ export function DisputePanel({ disputes }: DisputePanelProps) {
               key={dispute.id}
               className={`rounded-xl p-3 border transition-all duration-300 ${
                 dispute.status === 'investigating'
-                  ? 'bg-emerald-950/30 border-emerald-500/30'
+                  ? 'bg-cyan-950/30 border-cyan-500/30'
                   : dispute.status === 'approved'
-                  ? 'bg-emerald-950/20 border-emerald-500/20'
+                  ? 'bg-cyan-950/20 border-cyan-500/20'
                   : dispute.status === 'denied'
                   ? 'bg-red-950/20 border-red-500/20'
                   : 'bg-gray-800/30 border-gray-700/30'

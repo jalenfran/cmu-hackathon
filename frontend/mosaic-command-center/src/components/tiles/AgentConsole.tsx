@@ -226,7 +226,7 @@ export function AgentConsole({ traces }: AgentConsoleProps) {
       if (/VERIFIED|FEASIBLE|REGISTERED|SAFE/i.test(line)) {
         return (
           <span key={i} className="block">
-            <span className="text-emerald-400">{line}</span>
+            <span className="text-cyan-400">{line}</span>
           </span>
         );
       }

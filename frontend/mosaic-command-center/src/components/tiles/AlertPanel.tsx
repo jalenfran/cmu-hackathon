@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { AlertEvent, AgentTrace, KYCResult } from '../../types/events';
 import { formatCurrency, timeAgo, getRiskColor, getRiskLevel, getTraceColor, getTracePrefix, stripMarkdown } from '../../utils/formatters';
 import { Tile } from '../layout/Tile';
+import { LoadingSpinner } from '../ui/LoadingSpinner';
 import { ChevronDown, ChevronRight, Shield, UserCheck, CheckCircle, XCircle, Brain } from 'lucide-react';
 import { API_URL } from '../../config';
 
@@ -13,7 +14,7 @@ interface AlertPanelProps {
 
 function ConfidenceBadge({ score }: { score: number | null }) {
   if (score == null) return null;
-  const color = score >= 75 ? '#10b981' : score >= 50 ? '#f59e0b' : '#ef4444';
+  const color = score >= 75 ? '#06b6d4' : score >= 50 ? '#f59e0b' : '#ef4444';
   return (
     <span
       className="text-[10px] px-1.5 py-0.5 rounded-full font-bold font-mono border"
@@ -31,9 +32,9 @@ function ConfidenceBadge({ score }: { score: number | null }) {
 function StatusBadge({ status, reviewStatus, confidence }: { status: string; reviewStatus?: string | null; confidence?: number | null }) {
   const colors: Record<string, string> = {
     pending: 'bg-yellow-900/50 text-yellow-400 border-yellow-500/30',
-    investigating: 'bg-emerald-900/50 text-emerald-400 border-emerald-500/30',
+    investigating: 'bg-cyan-900/50 text-cyan-400 border-cyan-500/30',
     blocked: 'bg-red-900/50 text-red-400 border-red-500/30',
-    cleared: 'bg-emerald-900/50 text-emerald-400 border-emerald-500/30',
+    cleared: 'bg-cyan-900/50 text-cyan-400 border-cyan-500/30',
     flagged: 'bg-amber-900/50 text-amber-400 border-amber-500/30',
     awaiting_review: 'bg-purple-900/50 text-purple-400 border-purple-500/30 animate-pulse',
   };
@@ -148,8 +149,8 @@ function HumanReviewPanel({ alert }: { alert: AlertEvent }) {
           onClick={() => submitDecision('cleared')}
           disabled={submitting}
           className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-md text-xs font-bold
-            bg-emerald-900/50 text-emerald-400 border border-emerald-500/40
-            hover:bg-emerald-800/60 hover:border-emerald-400/60 transition-all
+            bg-cyan-900/50 text-cyan-400 border border-cyan-500/40
+            hover:bg-cyan-800/60 hover:border-cyan-400/60 transition-all
             disabled:opacity-50 disabled:cursor-not-allowed"
         >
           <CheckCircle size={13} />
@@ -173,7 +174,7 @@ function AlertKYC({ accountId }: { accountId: string }) {
   if (!kyc) return null;
 
   const kycColors: Record<string, string> = {
-    low: 'text-emerald-400 border-emerald-500/30 bg-emerald-900/20',
+    low: 'text-cyan-400 border-cyan-500/30 bg-cyan-900/20',
     medium: 'text-yellow-400 border-yellow-500/30 bg-yellow-900/20',
     high: 'text-red-400 border-red-500/30 bg-red-900/20',
     critical: 'text-red-400 border-red-500/50 bg-red-900/30',
@@ -221,13 +222,10 @@ export function AlertPanel({ alerts, agentTraces = [], activeInvestigationIds }:
   const hiddenCount = alerts.length > 15 ? alerts.length - 15 : 0;
 
   return (
-    <Tile title="Anomaly Alerts" accentColor="#10b981">
+    <Tile title="Anomaly Alerts" accentColor="#06b6d4">
       <div className="overflow-y-auto h-full space-y-2 pr-1 scrollbar-thin">
         {alerts.length === 0 && (
-          <div className="text-gray-500 text-sm text-center py-8 flex flex-col items-center gap-2">
-            <div className="w-5 h-5 border-2 border-emerald-500/50 border-t-transparent rounded-full animate-spin" />
-            Monitoring for anomalies...
-          </div>
+          <LoadingSpinner label="Monitoring for anomalies..." />
         )}
         {sortedAlerts.map((alert, i) => {
           const isExpanded = expandedId === alert.id;
@@ -356,8 +354,8 @@ export function AlertPanel({ alerts, agentTraces = [], activeInvestigationIds }:
 
                   {/* Agent verdict */}
                   {alert.agent_verdict && alert.status !== 'awaiting_review' && (
-                    <div className="text-xs bg-gray-800/50 rounded p-2 text-gray-300 border-l-2 border-emerald-500">
-                      <div className="text-emerald-400 font-semibold mb-1 flex items-center gap-1.5">
+                    <div className="text-xs bg-gray-800/50 rounded p-2 text-gray-300 border-l-2 border-cyan-500">
+                      <div className="text-cyan-400 font-semibold mb-1 flex items-center gap-1.5">
                         AI Agent Verdict
                         {alert.confidence_score != null && (
                           <ConfidenceBadge score={alert.confidence_score} />
@@ -409,12 +407,6 @@ export function AlertPanel({ alerts, agentTraces = [], activeInvestigationIds }:
                 </div>
               )}
 
-              {/* Agent verdict (compact, when not expanded) */}
-              {!isExpanded && alert.agent_verdict && (
-                <div className="text-xs bg-gray-800/50 rounded p-2 text-gray-300 border-l-2 border-emerald-500 truncate">
-                  {stripMarkdown(alert.agent_verdict).slice(0, 100)}{alert.agent_verdict.length > 100 ? '...' : ''}
-                </div>
-              )}
             </div>
           );
         })}

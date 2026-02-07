@@ -94,7 +94,7 @@ function StatCard({
         {icon}
       </div>
       <div className="min-w-0">
-        <div className="text-[10px] text-gray-500 uppercase tracking-[0.15em] font-medium">{label}</div>
+        <div className="text-[10px] text-gray-500 uppercase tracking-wider font-medium">{label}</div>
         <div className={`font-bold text-white truncate ${large ? 'text-xl money-saved-glow' : 'text-lg'}`}>
           <AnimatedNumber value={value} />
         </div>
@@ -110,8 +110,8 @@ export function StatsOverview({ stats }: StatsOverviewProps) {
         icon={<Activity size={18} />}
         label="Transactions"
         value={stats.total_transactions.toLocaleString()}
-        color="#10b981"
-        glow="stat-glow-emerald"
+        color="#06b6d4"
+        glow="stat-glow-cyan"
       />
       <StatCard
         icon={<AlertTriangle size={18} />}
@@ -131,8 +131,8 @@ export function StatsOverview({ stats }: StatsOverviewProps) {
         icon={<ShieldCheck size={18} />}
         label="Cleared"
         value={stats.cleared_count.toString()}
-        color="#10b981"
-        glow="stat-glow-emerald"
+        color="#06b6d4"
+        glow="stat-glow-cyan"
       />
       <StatCard
         icon={<Gavel size={18} />}
@@ -145,8 +145,8 @@ export function StatsOverview({ stats }: StatsOverviewProps) {
         icon={<DollarSign size={18} />}
         label="Money Saved"
         value={formatCurrency(stats.money_saved)}
-        color="#10b981"
-        glow="stat-glow-emerald"
+        color="#06b6d4"
+        glow="stat-glow-cyan"
         large
       />
       <StatCard
