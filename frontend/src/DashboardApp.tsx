@@ -13,7 +13,7 @@ import { Shield, Wifi, WifiOff, Database, Clock, Maximize, Minimize, Server, X, 
 import { API_URL } from './config';
 import './App.css';
 
-function App() {
+function DashboardApp() {
   const { transactions, alerts, agentTraces, disputes, stats, isConnected } = useWebSocket();
   const [nessieConnected, setNessieConnected] = useState(false);
   const [currentTime, setCurrentTime] = useState(new Date());
@@ -116,7 +116,7 @@ function App() {
   const allOnline = serviceCount.online === serviceCount.total && serviceCount.total > 0;
 
   return (
-    <div className="min-h-screen bg-[#0a0a0f] text-white">
+    <div className="min-h-screen bg-[#0a0a0f] text-white overflow-hidden">
       {/* Animated background gradient */}
       <div className="fixed inset-0 bg-gradient-mesh pointer-events-none" />
 
@@ -282,4 +282,4 @@ function App() {
   );
 }
 
-export default App;
+export default DashboardApp;

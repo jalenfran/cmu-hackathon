@@ -14,7 +14,12 @@ body {
   -moz-osx-font-smoothing: grayscale;
   background: #050505;
   color: #e5e7eb;
-  overflow: hidden;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+body::-webkit-scrollbar {
+  display: none;
 }
 
 code {

@@ -41,7 +41,8 @@
       "Bash(fi)",
       "Bash(done)",
       "Bash(/Users/farhan/Documents/GitHub/cmu-hackathon/backend/.venv/bin/python:*)",
-      "Bash(wc -l:*)"
+      "Bash(wc -l:*)",
+      "Bash(npm run build:*)"
     ]
   }
 }
